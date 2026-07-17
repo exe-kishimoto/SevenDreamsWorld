@@ -110,10 +110,20 @@ Three.js は r128（クラシックなグローバルビルド、CDN読み込み
 
 - **住人をタップ（スマホ）／照準を合わせてクリック（PC）すると吹き出しが出る**。
   もう一度で次の台詞へ。`TALK_SEC` 秒で自動的に消え、話している間その住人は立ち止まる。
-- 台詞は `addMascotWalker(file, width, name, lines)` / `addPersonWalker(file, name, lines)` の
-  引数で渡す（**文言を変えるのは末尾の住人配置の配列**）。`lines` を渡さない住人は話しかけ対象外。
+- 台詞は `addMascotWalker(file, width, name, lines)` / `addPersonWalker(file, name, lines)` /
+  `addBird(width, h, name, lines)` の引数で渡す（**文言を変えるのは末尾の住人配置の配列**）。
+  `lines` を渡さなければ話しかけ対象外。話しかけ対象は `makeTalker` が `talkers[]` に登録する。
+- **7体のうち `air` だけ空を飛ぶ**（`floaters`）が、他と同じく話しかけられる。
+  空の住人も止められるよう `updateFloaters` は `f.talk.talkUntil` を見る。鳥が速いと狙えないので
+  速度は地上の住人（0.7〜1.4）より少し速い程度に留めてある。
 - 吹き出しは `makeBubbleTex` の Canvas（白い紙・黒い輪郭・しっぽ・赤い名前）を貼った板ポリで、
-  毎フレーム `quaternion.copy(camera.quaternion)` で常にこちらを向く。頭上に置く。
+  毎フレーム `quaternion.copy(camera.quaternion)` で常にこちらを向く。位置は `placeBubble` が
+  **立ち絵の実際の高さ**（`position.y + scale.y/2`）から出す。地上前提の `baseY` で書くと鳥がズレる。
+  出した瞬間に `placeBubble` を呼ぶこと（呼ばないと最初の1フレームだけ原点に出る）。
+- **改行は句読点で切る**。`layoutText` が台詞を「、。！？の直後」（`segments`）で区切り、
+  その単位で行に詰める。単位が1つも割れない大きさまで字を縮めるので、語の途中では改行されない。
+  行頭に「。」が落ちないよう `NO_LINE_START` の禁則も入れてある。
+  **台詞に読点を入れておくと改行位置を作れる**（読点が無い長文は字が小さくなる）。
 - 当たり判定は `colliders` ではなく **`THREE.Raycaster`**（`talkMeshes()` の立ち絵だけが対象、
   `far = TALK_RANGE`）。立ち絵は透明部分も含む板なので、当たりはやや広め＝タップしやすい。
 - **タップ判定に「速さ」を入れないこと**。ゆっくり触ってもタップのつもりなので、

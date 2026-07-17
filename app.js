@@ -289,6 +289,7 @@
   // 進む向きも一定（左＝ワールド +x）。左端まで行ったら右端へループ＝ゆっくりパレード。
   // 銅像・モニター・建物を避けるため、広場の前後の帯（レーン）だけを歩く。
   var walkers = [], floaters = [];
+  var talkers = [];                      // 話しかけられる住人（地上の walker も空の鳥も入る）
   var LANE_R = 27;                       // 歩ける半径（建物 r>=31 には届かない）
   var WRAP = 76;                         // 空の飛行体の折返し x
   var FACE = Math.PI;                    // 立ち絵の固定向き（南向き＝正面が見える）
@@ -312,13 +313,18 @@
     return rec;
   }
 
-  // 住人を1体登録する。name/lines を渡すと話しかけられるようになる（addTalker 参照）
+  // 話しかけられる住人の共通部分。lines が無ければ話しかけ対象にしない
+  function makeTalker(rec, name, lines) {
+    var t = { rec: rec, name: name, lines: lines || null, line: -1, talkUntil: 0, bubble: null };
+    rec.mesh.userData.walker = t;   // レイキャストの当たりから住人を引くため
+    if (t.lines) talkers.push(t);
+    return t;
+  }
+
+  // 地上を歩く住人を1体登録する
   function pushWalker(rec, lp, speed, name, lines) {
-    var wk = {
-      rec: rec, xb: lp.xb, speed: speed, phase: rand(0, 6.28),
-      name: name, lines: lines || null, line: -1, talkUntil: 0, bubble: null
-    };
-    rec.mesh.userData.walker = wk;   // レイキャストの当たりから住人を引くため
+    var wk = makeTalker(rec, name, lines);
+    wk.xb = lp.xb; wk.speed = speed; wk.phase = rand(0, 6.28);
     walkers.push(wk);
     return wk;
   }
@@ -393,8 +399,8 @@
     }
   }
 
-  // 空を横切る鳥（air）
-  function addBird(width, h) {
+  // 空を横切る鳥（air）。地上の住人と同じく name/lines を渡せば話しかけられる
+  function addBird(width, h, name, lines) {
     var rec = makeWalkerMesh(width, null, null);
     new THREE.TextureLoader().load("asset/char/air.png", function (t) {
       t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
@@ -402,7 +408,9 @@
     });
     var z = (Math.random() < 0.5) ? rand(-32, -14) : rand(14, 34);
     rec.mesh.position.set(rand(-WRAP, WRAP), h, z); scene.add(rec.mesh);
-    floaters.push({ mesh: rec.mesh, y: h, speed: rand(2.2, 3.4), phase: rand(0, 6.28) });
+    var talk = makeTalker(rec, name, lines);
+    // 速いと狙ってタップできない。地上の住人（0.7〜1.4）より少し速い程度に留める
+    floaters.push({ mesh: rec.mesh, y: h, speed: rand(1.0, 1.6), phase: rand(0, 6.28), talk: talk });
   }
 
   // 飛行機（kv 上部の旅客機イメージ：横向き＝ノーズ左のシルエット）
@@ -470,18 +478,70 @@
     x.closePath();
   }
 
-  // 日本語なので1文字ずつ詰めて折り返す
-  function wrapText(x, text, maxW) {
+  // 行頭に置けない文字（句読点・閉じ括弧・小書き・長音など）
+  var NO_LINE_START = "、。，．・：；？！ー〜…ヽヾゝゞ々）］｝」』】〉》〟’”ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ";
+  // 行末に置けない文字（開き括弧）
+  var NO_LINE_END = "（［｛「『【〈《〝‘“";
+
+  // 台詞を「読点・句点の直後」で区切る。日本語はここが自然な改行位置なので、
+  // まずこの単位で行に詰める。言葉の途中で改行されるのを防ぐのが狙い。
+  function segments(text) {
+    var segs = [], cur = "";
+    for (var i = 0; i < text.length; i++) {
+      cur += text.charAt(i);
+      if ("、。！？".indexOf(text.charAt(i)) < 0) continue;
+      // 句読点のあとに閉じ括弧などが続くなら、同じ単位に含める
+      while (i + 1 < text.length && NO_LINE_START.indexOf(text.charAt(i + 1)) >= 0) cur += text.charAt(++i);
+      segs.push(cur); cur = "";
+    }
+    if (cur) segs.push(cur);
+    return segs;
+  }
+
+  // 最後の手段：区切りが無いほど長い一続きを1文字ずつ折る（禁則つき）
+  function breakLong(x, text, maxW) {
     var out = [], line = "";
     for (var i = 0; i < text.length; i++) {
       var ch = text.charAt(i);
-      if (ch === "\n") { out.push(line); line = ""; continue; }
-      var t = line + ch;
-      if (line && x.measureText(t).width > maxW) { out.push(line); line = ch; }
-      else line = t;
+      if (line && x.measureText(line + ch).width > maxW) {
+        if (NO_LINE_START.indexOf(ch) >= 0) { out.push(line + ch); line = ""; continue; }
+        var last = line.charAt(line.length - 1);
+        if (line.length > 1 && NO_LINE_END.indexOf(last) >= 0) { out.push(line.slice(0, -1)); line = last + ch; continue; }
+        out.push(line); line = ch; continue;
+      }
+      line += ch;
     }
     if (line) out.push(line);
     return out;
+  }
+
+  function bubbleFont(size) {
+    return "bold " + size + "px 'Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif";
+  }
+
+  // 読点・句点の単位を行に詰める。単位が1つも割れないで済む大きさまで字を縮める。
+  function layoutText(x, text, maxW) {
+    var segs = segs = segments(text), size = 38, i;
+    for (; size > 24; size -= 2) {
+      x.font = bubbleFont(size);
+      var fits = true;
+      for (i = 0; i < segs.length; i++) if (x.measureText(segs[i]).width > maxW) { fits = false; break; }
+      if (fits) break;
+    }
+    x.font = bubbleFont(size);
+    var lines = [], line = "";
+    for (i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      if (x.measureText(s).width > maxW) {          // それでも入らない一続き
+        if (line) { lines.push(line); line = ""; }
+        lines = lines.concat(breakLong(x, s, maxW));
+        continue;
+      }
+      if (line && x.measureText(line + s).width > maxW) { lines.push(line); line = s; }
+      else line += s;
+    }
+    if (line) lines.push(line);
+    return { lines: lines, size: size };
   }
 
   // 白い紙・黒い輪郭のペーパー調の吹き出し
@@ -495,8 +555,8 @@
     x.strokeStyle = "#222"; x.lineWidth = 7; x.stroke();
     x.textAlign = "center"; x.textBaseline = "middle";
     x.fillStyle = "#222";
-    x.font = "bold 40px 'Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif";
-    var lines = wrapText(x, text, W - 120), lh = 50;
+    // 金枠ぶんを引いた実際に使える幅。狭くしすぎると数十pxの超過で不要に2行になる
+    var lay = layoutText(x, text, W - 90), lines = lay.lines, lh = lay.size * 1.28;
     var mid = 14 + BH / 2 - 16;
     for (var i = 0; i < lines.length; i++) {
       x.fillText(lines[i], W / 2, mid + (i - (lines.length - 1) / 2) * lh);
@@ -524,6 +584,14 @@
     wk.bubble.material.map = makeBubbleTex(wk.name, wk.lines[wk.line]);
     wk.bubble.material.needsUpdate = true;
     wk.bubble.visible = true;
+    placeBubble(wk);   // 置く前に1フレーム描くと原点に出てしまう
+  }
+
+  // 立ち絵の頭のすぐ上。鳥は空を飛ぶので、地上前提の baseY ではなく実際の高さから出す
+  function placeBubble(wk) {
+    var m = wk.rec.mesh;
+    wk.bubble.position.set(m.position.x, m.position.y + m.scale.y * 0.5 + 1.05, m.position.z);
+    wk.bubble.quaternion.copy(camera.quaternion);   // 常にこちらを向く
   }
 
   function updateBubbles(tsec) {
@@ -531,9 +599,7 @@
       var wk = talking[i];
       if (!wk.bubble.visible) continue;
       if (tsec >= wk.talkUntil) { wk.bubble.visible = false; continue; }
-      var m = wk.rec.mesh;
-      wk.bubble.position.set(m.position.x, wk.rec.baseY * 2 + 1.05, m.position.z);
-      wk.bubble.quaternion.copy(camera.quaternion);   // 常にこちらを向く
+      placeBubble(wk);
     }
   }
 
@@ -551,9 +617,11 @@
   function updateFloaters(dt, tsec) {
     for (var i = 0; i < floaters.length; i++) {
       var f = floaters[i], dir = f.dir || 1;
-      f.mesh.position.x += dir * f.speed * dt;
-      if (dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
-      if (dir < 0 && f.mesh.position.x < -WRAP) f.mesh.position.x = WRAP;
+      if (!(f.talk && tsec < f.talk.talkUntil)) {   // 話しかけられている間はその場に留まる
+        f.mesh.position.x += dir * f.speed * dt;
+        if (dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
+        if (dir < 0 && f.mesh.position.x < -WRAP) f.mesh.position.x = WRAP;
+      }
       f.mesh.position.y = f.y + Math.sin(tsec * 0.7 + f.phase) * (f.plane ? 0.6 : 0.4);
     }
   }
@@ -742,12 +810,12 @@
     ["move", 2.0, "ムーヴ", [
       "動けば、景色は変わる。",
       "歩こう。まちはまだまだ広いよ。",
-      "浮遊モードで空から見るのもおすすめ！"
+      "浮遊モードなら、空から見渡せるよ。"
     ]],
     ["punch", 2.1, "パンチ", [
       "壁は、殴れば道になる。",
       "今日もひと勝負、いってみようぜ！",
-      "あきらめの悪さも才能だ。"
+      "あきらめの悪さも、才能だ。"
     ]],
     ["heart", 1.3, "ハート", [
       "夢は、誰かを想う気持ちから。",
@@ -763,17 +831,23 @@
   // 人（最大3人）— asset/people/person-1.png 〜 person-3.png を使用（無ければ線画）
   var PEOPLE_LINES = [
     ["まちの人", ["この街、ぜんぶ紙でできてるんだって。", "赤いサインが目印。迷わないよ。"]],
-    ["まちの人", ["モニターで映像が流れてるよ。", "音は右上のボタンで出せるみたい。"]],
+    ["まちの人", ["モニターで映像が流れてるよ。", "音は右上のボタンで、出せるみたい。"]],
     ["まちの人", ["中央の銅像、立派だよね。", "夢と生きる、か。いい言葉だ。"]]
   ];
   for (var pi = 1; pi <= 3; pi++) {
     addPersonWalker("asset/people/person-" + pi + ".png?cb=" + Date.now(),
       PEOPLE_LINES[pi - 1][0], PEOPLE_LINES[pi - 1][1]);
   }
-  // 空を横切る小鳥（air）— 飛行機よりずっと低く、建物・木の高さあたりを飛ぶ
-  addBird(1.2, 4.5);
-  addBird(1.0, 6.0);
-  addBird(1.1, 7.5);
+  // 空を横切る小鳥（air）— 飛行機よりずっと低く、建物・木の高さあたりを飛ぶ。
+  // 7体のうち air だけ空にいるが、見上げてタップすれば同じように話しかけられる
+  var AIR_LINES = [
+    "空から見ると、まちがよく見える。",
+    "上を向いてごらん。気持ちいいよ。",
+    "浮遊モードなら、ここまで来られるよ。"
+  ];
+  addBird(1.2, 4.5, "エア", AIR_LINES);
+  addBird(1.0, 6.0, "エア", AIR_LINES);
+  addBird(1.1, 7.5, "エア", AIR_LINES);
   // 上空を横切る飛行機は1機だけ（asset/plane/plane.png を使用、無ければ線画）。鳥より高く飛ぶ
   addAirplane(7, 27);
 
@@ -972,9 +1046,7 @@
     // 住人は初期化時に出そろうので一度だけ組む（毎フレームのレイキャストで使う）
     if (!_talkMeshes) {
       _talkMeshes = [];
-      for (var i = 0; i < walkers.length; i++) {
-        if (walkers[i].lines) _talkMeshes.push(walkers[i].rec.mesh);
-      }
+      for (var i = 0; i < talkers.length; i++) _talkMeshes.push(talkers[i].rec.mesh);
     }
     return _talkMeshes;
   }
