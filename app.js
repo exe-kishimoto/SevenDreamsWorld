@@ -512,18 +512,22 @@
     npx.fillStyle = SD_RED_CSS; npx.fillRect(0, 0, 1024, 256);
     npx.strokeStyle = "#E2B060"; npx.lineWidth = 18; npx.strokeRect(9, 9, 1006, 238);
     npx.textAlign = "center"; npx.textBaseline = "middle";
-    npx.fillStyle = "#ffe6b0";
-    npx.font = "bold 40px 'Arial','Helvetica',sans-serif";
-    npx.fillText("Seven Dreams Group", 512, 74);
-    // 名前が主役。金枠に収まる範囲でできるだけ大きく組む
-    npx.fillStyle = "#fff";
-    var NAME = "Toshiya Takeda", nsize = 120;
-    npx.font = "bold " + nsize + "px 'Arial','Helvetica',sans-serif";
-    while (npx.measureText(NAME).width > 900 && nsize > 40) {
-      nsize -= 2;
-      npx.font = "bold " + nsize + "px 'Arial','Helvetica',sans-serif";
+    // 2行とも金枠に収まる幅まで自動で縮めて、できるだけ大きく組む
+    function fitFont(text, max, limit) {
+      var s = max;
+      npx.font = "bold " + s + "px 'Arial','Helvetica',sans-serif";
+      while (npx.measureText(text).width > limit && s > 24) {
+        s -= 2;
+        npx.font = "bold " + s + "px 'Arial','Helvetica',sans-serif";
+      }
     }
-    npx.fillText(NAME, 512, 162);
+    npx.fillStyle = "#ffe6b0";
+    fitFont("Seven Dreams Group", 62, 900);
+    npx.fillText("Seven Dreams Group", 512, 78);
+    // 名前が主役なので、上の行より大きく
+    npx.fillStyle = "#fff";
+    fitFont("Toshiya Takeda", 112, 900);
+    npx.fillText("Toshiya Takeda", 512, 170);
     var plate = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.6, 0.3), [
       colMat, colMat, colMat, colMat,
       new THREE.MeshBasicMaterial({ map: texFromCanvas(npc) }), colMat
