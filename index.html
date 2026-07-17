@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Seven Dreams World — 夢と生きる。</title>
+<style>
+  :root { --sd-red:#E60013; }
+  html, body {
+    margin:0; padding:0; overflow:hidden; background:#fff; height:100%;
+    touch-action:none; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  }
+  * { box-sizing:border-box; }
+  canvas { display:block; }
+  body { font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif; color:#222; }
+
+  /* パスワードゲート（プレイ前） */
+  #gate {
+    position:fixed; inset:0; z-index:40;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    background:
+      repeating-linear-gradient(-45deg, rgba(230,0,19,0.06) 0 10px, rgba(230,0,19,0) 10px 20px),
+      radial-gradient(circle at 50% 40%, #ffffff, #ffeef0 70%, #ffdfe3);
+    color:#333;
+  }
+  #gate .gate-panel { max-width:460px; padding:32px; }
+  #gate .logo { font-size:12px; letter-spacing:0.5em; color:var(--sd-red); font-weight:bold; margin-bottom:12px; }
+  #gate h1 { font-size:30px; margin:0 0 6px; letter-spacing:0.14em; color:#1b1b1b; }
+  #gate p { font-size:13px; color:#7a7a7a; margin:0 0 22px; }
+  #gate input {
+    width:260px; max-width:78vw; font-size:16px; padding:12px 16px; margin:0 0 14px;
+    border:1.5px solid rgba(230,0,19,0.35); border-radius:28px; outline:none;
+    text-align:center; letter-spacing:0.1em; font-family:inherit; background:#fff; color:#222;
+  }
+  #gate input:focus { border-color:var(--sd-red); }
+  #gate button {
+    display:block; margin:0 auto; font-size:16px; padding:12px 40px; border-radius:28px;
+    background:var(--sd-red); color:#fff; font-weight:bold; border:none; cursor:pointer;
+    font-family:inherit; box-shadow:0 8px 24px rgba(230,0,19,0.35);
+  }
+  #gate #gate-err { min-height:20px; margin-top:14px; font-size:13px; color:var(--sd-red); font-weight:bold; }
+
+  #overlay {
+    position:fixed; inset:0; z-index:20;
+    display:flex; align-items:center; justify-content:center;
+    background:
+      repeating-linear-gradient(-45deg, rgba(230,0,19,0.06) 0 10px, rgba(230,0,19,0) 10px 20px),
+      radial-gradient(circle at 50% 38%, #ffffff, #ffeef0 70%, #ffdfe3);
+    color:#333; cursor:pointer; text-align:center;
+  }
+  #overlay .panel { max-width:640px; padding:32px; }
+  #overlay .logo { font-size:13px; letter-spacing:0.5em; color:var(--sd-red); font-weight:bold; margin-bottom:10px; }
+  #overlay h1 { font-size:34px; margin:0 0 4px; letter-spacing:0.04em; color:#1b1b1b; }
+  #overlay h1 b { color:var(--sd-red); }
+  #overlay h2 { font-size:14px; font-weight:normal; margin:0 0 26px; color:#7a7a7a; }
+  #overlay .start {
+    font-size:17px; padding:13px 34px; border-radius:30px; display:inline-block; margin-bottom:24px;
+    background:var(--sd-red); color:#fff; font-weight:bold; box-shadow:0 8px 24px rgba(230,0,19,0.35);
+  }
+  #overlay .keys { font-size:12.5px; color:#8a8a8a; line-height:2.0; }
+  #overlay .keys b { color:var(--sd-red); }
+
+  #crosshair {
+    position:fixed; top:50%; left:50%; width:8px; height:8px; margin:-4px 0 0 -4px;
+    border-radius:50%; background:rgba(230,0,19,0.7); box-shadow:0 0 0 2px rgba(255,255,255,0.8);
+    z-index:10; display:none; pointer-events:none;
+  }
+  #hud {
+    position:fixed; left:14px; bottom:12px; z-index:10; display:none;
+    font-size:12px; color:#555; background:rgba(255,255,255,0.75);
+    padding:8px 12px; border-radius:8px; line-height:1.7; pointer-events:none;
+    border:1px solid rgba(230,0,19,0.2);
+  }
+  #hud b { color:var(--sd-red); }
+  #title-badge {
+    position:fixed; right:14px; top:12px; z-index:10; display:none;
+    font-size:12px; color:#555; background:rgba(255,255,255,0.8);
+    padding:8px 12px; border-radius:8px; pointer-events:none; text-align:right;
+    border:1px solid rgba(230,0,19,0.2);
+  }
+  #title-badge b { color:var(--sd-red); }
+
+  #controls-guide {
+    position:fixed; right:14px; bottom:14px; z-index:10; display:none;
+    background:rgba(255,255,255,0.85); border:1px solid rgba(230,0,19,0.3);
+    border-radius:10px; padding:11px 13px; pointer-events:none;
+    color:#555; font-size:12px; line-height:1.75; min-width:190px;
+  }
+  #controls-guide .cg-title {
+    font-size:11px; color:var(--sd-red); letter-spacing:0.06em; margin-bottom:6px; font-weight:bold;
+    border-bottom:1px solid rgba(230,0,19,0.18); padding-bottom:5px;
+  }
+  #controls-guide .cg-row { display:flex; align-items:center; gap:8px; }
+  #controls-guide .cg-row + .cg-row { margin-top:3px; }
+  #controls-guide .key {
+    display:inline-block; min-width:20px; text-align:center;
+    background:#fff; color:var(--sd-red); border:1px solid rgba(230,0,19,0.4);
+    border-radius:4px; padding:1px 6px; font-size:11px; font-weight:bold;
+  }
+  #controls-guide .desc { color:#666; }
+
+  #fly-badge {
+    position:fixed; left:14px; top:12px; z-index:10; display:none;
+    background:var(--sd-red); color:#fff; border-radius:16px; padding:5px 14px;
+    font-size:12px; font-weight:bold; pointer-events:none; letter-spacing:0.04em;
+  }
+
+  /* 上部のミニボタン（BGM / 動画音）— タイトルバッジ（top:12・2行）と重ならないよう下げる */
+  #topbtns { position:fixed; right:14px; top:78px; z-index:13; display:none; gap:8px; }
+  #topbtns button {
+    width:auto; min-width:44px; height:40px; padding:0 12px; border-radius:20px;
+    background:rgba(255,255,255,0.9); border:1.5px solid rgba(230,0,19,0.45);
+    color:var(--sd-red); font-size:13px; font-weight:bold; cursor:pointer;
+    font-family:inherit; -webkit-tap-highlight-color:transparent;
+  }
+  #topbtns button.off { opacity:0.5; }
+
+  /* スマホ用 */
+  #look-layer { position:fixed; inset:0; z-index:2; display:none; touch-action:none; background:transparent; }
+  #touch-ui { position:fixed; inset:0; z-index:12; display:none; pointer-events:none; }
+  #touch-ui * { pointer-events:auto; touch-action:none; -webkit-tap-highlight-color:transparent; }
+  #joystick {
+    position:fixed; right:26px; bottom:34px; width:130px; height:130px; border-radius:50%;
+    background:rgba(255,255,255,0.35); border:2px solid rgba(230,0,19,0.45);
+  }
+  #joy-knob {
+    position:absolute; left:50%; top:50%; width:56px; height:56px; border-radius:50%;
+    background:radial-gradient(circle at 40% 35%, #ff5566, var(--sd-red));
+    border:2px solid rgba(255,255,255,0.7); transform:translate(-50%,-50%);
+  }
+  #touch-buttons { position:fixed; left:20px; bottom:30px; display:flex; flex-direction:column-reverse; gap:12px; }
+  .tbtn {
+    display:flex; align-items:center; justify-content:center; font-family:inherit; font-weight:bold;
+    color:#fff; background:var(--sd-red); border:2px solid rgba(255,255,255,0.6);
+    border-radius:50%; outline:none; -webkit-appearance:none; appearance:none;
+  }
+  .tbtn.big { width:82px; height:82px; font-size:14px; }
+  .tbtn.small { width:56px; height:56px; font-size:12px; }
+  .tbtn.on { background:#8a000c; }
+  #touch-small-row { display:flex; gap:12px; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-panel">
+    <div class="logo">S E V E N &nbsp; D R E A M S &nbsp; W O R L D</div>
+    <h1>PRIVATE</h1>
+    <p>このワールドはパスワードが必要です</p>
+    <input id="gate-input" type="password" placeholder="パスワード" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="gate-btn" type="button">入場</button>
+    <div id="gate-err"></div>
+  </div>
+</div>
+<script>
+(function () {
+  var gate = document.getElementById('gate');
+  var inp = document.getElementById('gate-input');
+  var btn = document.getElementById('gate-btn');
+  var err = document.getElementById('gate-err');
+  var PW = atob('ZXhlY3V0aXZl'); // "executive"
+  function submit() {
+    if (inp.value === PW) { gate.style.display = 'none'; }
+    else { err.textContent = 'パスワードが違います'; inp.value = ''; inp.focus(); }
+  }
+  btn.addEventListener('click', submit);
+  inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+  window.addEventListener('load', function () { inp.focus(); });
+  inp.focus();
+})();
+</script>
+
+<div id="overlay">
+  <div class="panel">
+    <div class="logo">S E V E N &nbsp; D R E A M S &nbsp; W O R L D</div>
+    <h1>Seven Dreams <b>World</b></h1>
+    <h2>夢と生きる。 — ペーパーワールドを歩く 3D メタバース（プロトタイプ）</h2>
+    <div class="start" id="start-btn">クリックしてスタート</div>
+    <div class="keys" id="keys-desktop">
+      <b>W A S D</b>：移動　<b>Shift</b>：走る　<b>Space</b>：ジャンプ　マウス：視点<br>
+      <b>ホイール</b>：ズーム　<b>F</b>：浮遊モード　<b>B</b>：BGM　<b>M</b>：動画音<br>
+      <b>ESC</b>：カーソル表示
+    </div>
+    <div class="keys" id="keys-mobile" style="display:none">
+      <b>右下スティック</b>：移動　<b>画面ドラッグ</b>：視点<br>
+      左下ボタン：<b>ジャンプ / 走る / 浮遊</b>　上部：<b>BGM / 動画音</b>
+    </div>
+  </div>
+</div>
+
+<div id="look-layer"></div>
+<div id="touch-ui">
+  <div id="joystick"><div id="joy-knob"></div></div>
+  <div id="touch-buttons">
+    <button id="tb-jump" class="tbtn big" type="button">跳</button>
+    <button id="tb-down" class="tbtn big" type="button" style="display:none">降</button>
+    <div id="touch-small-row">
+      <button id="tb-run" class="tbtn small" type="button">走</button>
+      <button id="tb-fly" class="tbtn small" type="button">浮</button>
+    </div>
+  </div>
+</div>
+
+<div id="topbtns">
+  <button id="btn-bgm" type="button">♪ BGM</button>
+  <button id="btn-mov" class="off" type="button">🔇 動画</button>
+</div>
+
+<div id="crosshair"></div>
+<div id="hud">まちを自由に散策。<b>F</b>で浮遊、<b>B</b>でBGM、<b>M</b>で動画の音。</div>
+<div id="title-badge"><b>Seven Dreams World</b><br>夢と生きる。（試作）</div>
+
+<div id="controls-guide">
+  <div class="cg-title">操作ガイド</div>
+  <div class="cg-row"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span><span class="desc">移動</span></div>
+  <div class="cg-row"><span class="key">マウス</span><span class="desc">視点</span></div>
+  <div class="cg-row"><span class="key">Shift</span><span class="desc">走る</span><span class="key">Space</span><span class="desc">ジャンプ</span></div>
+  <div class="cg-row"><span class="key">ホイール</span><span class="desc">ズーム</span></div>
+  <div class="cg-row"><span class="key">F</span><span class="desc">浮遊モード</span></div>
+  <div class="cg-row"><span class="key">B</span><span class="desc">BGM</span><span class="key">M</span><span class="desc">動画の音</span></div>
+</div>
+
+<div id="fly-badge">✈ 浮遊モード ON　Space:上昇 / Shift:下降 / Ctrl:加速</div>
+
+<!-- BGM: asset/bgm/ の音源。差し替え時はこの src を変更（スタート後に自動再生 / B キー・♪BGMで ON/OFF） -->
+<audio id="bgm" loop preload="auto">
+  <source src="asset/bgm/nanaironotaiyou_vo-2db.mp3" type="audio/mpeg">
+</audio>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/PointerLockControls.js"></script>
+<script src="app.js?v=9"></script>
+</body>
+</html>
