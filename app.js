@@ -312,7 +312,18 @@
     return rec;
   }
 
-  function addMascotWalker(file, width) {
+  // 住人を1体登録する。name/lines を渡すと話しかけられるようになる（addTalker 参照）
+  function pushWalker(rec, lp, speed, name, lines) {
+    var wk = {
+      rec: rec, xb: lp.xb, speed: speed, phase: rand(0, 6.28),
+      name: name, lines: lines || null, line: -1, talkUntil: 0, bubble: null
+    };
+    rec.mesh.userData.walker = wk;   // レイキャストの当たりから住人を引くため
+    walkers.push(wk);
+    return wk;
+  }
+
+  function addMascotWalker(file, width, name, lines) {
     var rec = makeWalkerMesh(width, null, null);
     new THREE.TextureLoader().load("asset/char/" + file + ".png", function (t) {
       t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
@@ -320,7 +331,7 @@
     });
     var lp = laneParams();
     rec.mesh.position.set(rand(-lp.xb, lp.xb), rec.baseY, lp.z); scene.add(rec.mesh);
-    walkers.push({ rec: rec, xb: lp.xb, speed: rand(0.7, 1.4), phase: rand(0, 6.28) });
+    pushWalker(rec, lp, rand(0.7, 1.4), name, lines);
   }
 
   // 線画の人（kv 準拠：細身でエレガントな横向き＝左向きシルエット）
@@ -364,12 +375,12 @@
     var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; return t;
   }
   // file を渡すと asset/people/ の画像を使い、無ければ線画にフォールバック
-  function addPersonWalker(file) {
+  function addPersonWalker(file, name, lines) {
     var w = rand(1.5, 1.9);
     var rec = makeWalkerMesh(w, null, null);
     var lp = laneParams();
     rec.mesh.position.set(rand(-lp.xb, lp.xb), rec.baseY, lp.z); scene.add(rec.mesh);
-    walkers.push({ rec: rec, xb: lp.xb, speed: rand(0.8, 1.3), phase: rand(0, 6.28) });
+    pushWalker(rec, lp, rand(0.8, 1.3), name, lines);
     function apply(tex) { rec.applyAspect(tex.image.height / tex.image.width); rec.mat.map = tex; rec.mat.needsUpdate = true; }
     if (file) {
       var fallback = makePersonTex();
@@ -436,12 +447,104 @@
       function () { apply(fallback); });
   }
 
+  // ---- 吹き出し（キャラをタップ／クリックで話しかける） -------------------
+  var TALK_SEC = 5.0;          // 吹き出しを出しておく秒数
+  var TALK_RANGE = 26;         // 話しかけられる距離
+  var talking = [];            // 吹き出しを作った住人
+
+  // 角丸＋しっぽを1本のパスで描く（塗りと輪郭の継ぎ目を出さないため）
+  function bubblePath(x, X, Y, W, H, r, tx) {
+    x.beginPath();
+    x.moveTo(X + r, Y);
+    x.lineTo(X + W - r, Y);
+    x.quadraticCurveTo(X + W, Y, X + W, Y + r);
+    x.lineTo(X + W, Y + H - r);
+    x.quadraticCurveTo(X + W, Y + H, X + W - r, Y + H);
+    x.lineTo(tx + 64, Y + H);          // 下辺を右→左へ。途中でしっぽへ降りる
+    x.lineTo(tx + 28, Y + H + 62);
+    x.lineTo(tx, Y + H);
+    x.lineTo(X + r, Y + H);
+    x.quadraticCurveTo(X, Y + H, X, Y + H - r);
+    x.lineTo(X, Y + r);
+    x.quadraticCurveTo(X, Y, X + r, Y);
+    x.closePath();
+  }
+
+  // 日本語なので1文字ずつ詰めて折り返す
+  function wrapText(x, text, maxW) {
+    var out = [], line = "";
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (ch === "\n") { out.push(line); line = ""; continue; }
+      var t = line + ch;
+      if (line && x.measureText(t).width > maxW) { out.push(line); line = ch; }
+      else line = t;
+    }
+    if (line) out.push(line);
+    return out;
+  }
+
+  // 白い紙・黒い輪郭のペーパー調の吹き出し
+  function makeBubbleTex(name, text) {
+    var W = 640, H = 320, BH = H - 90;
+    var c = makeCanvas(W, H), x = c.getContext("2d");
+    x.clearRect(0, 0, W, H);
+    x.lineJoin = "round";
+    bubblePath(x, 14, 14, W - 28, BH, 46, 168);
+    x.fillStyle = "#fff"; x.fill();
+    x.strokeStyle = "#222"; x.lineWidth = 7; x.stroke();
+    x.textAlign = "center"; x.textBaseline = "middle";
+    x.fillStyle = "#222";
+    x.font = "bold 40px 'Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif";
+    var lines = wrapText(x, text, W - 120), lh = 50;
+    var mid = 14 + BH / 2 - 16;
+    for (var i = 0; i < lines.length; i++) {
+      x.fillText(lines[i], W / 2, mid + (i - (lines.length - 1) / 2) * lh);
+    }
+    x.textAlign = "right"; x.fillStyle = SD_RED_CSS;
+    x.font = "bold 26px 'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif";
+    x.fillText(name, W - 46, 14 + BH - 26);
+    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+    return t;
+  }
+
+  function speak(wk) {
+    if (!wk || !wk.lines || !wk.lines.length) return;
+    wk.line = (wk.line + 1) % wk.lines.length;
+    wk.talkUntil = clock.elapsedTime + TALK_SEC;
+    if (!wk.bubble) {
+      var mat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+      wk.bubble = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.8), mat);
+      wk.bubble.userData.shadow = "none";
+      wk.bubble.renderOrder = 5;
+      scene.add(wk.bubble);
+      talking.push(wk);
+    }
+    if (wk.bubble.material.map) wk.bubble.material.map.dispose();
+    wk.bubble.material.map = makeBubbleTex(wk.name, wk.lines[wk.line]);
+    wk.bubble.material.needsUpdate = true;
+    wk.bubble.visible = true;
+  }
+
+  function updateBubbles(tsec) {
+    for (var i = 0; i < talking.length; i++) {
+      var wk = talking[i];
+      if (!wk.bubble.visible) continue;
+      if (tsec >= wk.talkUntil) { wk.bubble.visible = false; continue; }
+      var m = wk.rec.mesh;
+      wk.bubble.position.set(m.position.x, wk.rec.baseY * 2 + 1.05, m.position.z);
+      wk.bubble.quaternion.copy(camera.quaternion);   // 常にこちらを向く
+    }
+  }
+
   // 左（+x）へゆっくり進み、右端(-xb)へループ。向きは固定。
   function updateWalkers(dt, tsec) {
     for (var i = 0; i < walkers.length; i++) {
       var wk = walkers[i], m = wk.rec.mesh;
-      m.position.x += wk.speed * dt;
-      if (m.position.x > wk.xb) m.position.x = -wk.xb;
+      if (tsec >= wk.talkUntil) {          // 話しかけられている間は立ち止まる
+        m.position.x += wk.speed * dt;
+        if (m.position.x > wk.xb) m.position.x = -wk.xb;
+      }
       m.position.y = wk.rec.baseY + Math.abs(Math.sin(tsec * 4 + wk.phase)) * 0.08;
     }
   }
@@ -624,10 +727,49 @@
 
   // ---- 住人を配置（左向きにゆっくり歩き回る＝パレード） ------------------
   // マスコット（ph-music-01.png の6体が地上を散策）
-  [["smile", 1.7], ["next", 2.4], ["move", 2.0], ["punch", 2.1], ["heart", 1.3], ["hope", 1.5]]
-    .forEach(function (c) { addMascotWalker(c[0], c[1]); });
+  // [ファイル名, 幅, 表示名, 台詞（タップのたび順に出る）]
+  [
+    ["smile", 1.7, "スマイル", [
+      "ようこそ、Seven Dreams World へ！",
+      "笑顔でいると、いい夢に出会えるよ。",
+      "今日はどんな夢を見にきたの？"
+    ]],
+    ["next", 2.4, "ネクスト", [
+      "次の一歩が、未来をつくる。",
+      "まだ見ぬ場所へ、行ってみない？",
+      "立ち止まるのも、次への準備さ。"
+    ]],
+    ["move", 2.0, "ムーヴ", [
+      "動けば、景色は変わる。",
+      "歩こう。まちはまだまだ広いよ。",
+      "浮遊モードで空から見るのもおすすめ！"
+    ]],
+    ["punch", 2.1, "パンチ", [
+      "壁は、殴れば道になる。",
+      "今日もひと勝負、いってみようぜ！",
+      "あきらめの悪さも才能だ。"
+    ]],
+    ["heart", 1.3, "ハート", [
+      "夢は、誰かを想う気持ちから。",
+      "あなたの夢、聞かせて？",
+      "まんなかの銅像、もう見た？"
+    ]],
+    ["hope", 1.5, "ホープ", [
+      "希望は、いつでもここにある。",
+      "大丈夫。夢はきっと形になる。",
+      "空を見上げてごらん。飛行機が飛んでるよ。"
+    ]]
+  ].forEach(function (c) { addMascotWalker(c[0], c[1], c[2], c[3]); });
   // 人（最大3人）— asset/people/person-1.png 〜 person-3.png を使用（無ければ線画）
-  for (var pi = 1; pi <= 3; pi++) addPersonWalker("asset/people/person-" + pi + ".png?cb=" + Date.now());
+  var PEOPLE_LINES = [
+    ["まちの人", ["この街、ぜんぶ紙でできてるんだって。", "赤いサインが目印。迷わないよ。"]],
+    ["まちの人", ["モニターで映像が流れてるよ。", "音は右上のボタンで出せるみたい。"]],
+    ["まちの人", ["中央の銅像、立派だよね。", "夢と生きる、か。いい言葉だ。"]]
+  ];
+  for (var pi = 1; pi <= 3; pi++) {
+    addPersonWalker("asset/people/person-" + pi + ".png?cb=" + Date.now(),
+      PEOPLE_LINES[pi - 1][0], PEOPLE_LINES[pi - 1][1]);
+  }
   // 空を横切る小鳥（air）— 飛行機よりずっと低く、建物・木の高さあたりを飛ぶ
   addBird(1.2, 4.5);
   addBird(1.0, 6.0);
@@ -724,6 +866,7 @@
   (function setupTouchLook() {
     var layer = document.getElementById("look-layer");
     var lastX = 0, lastY = 0, id = null, pinchD = 0;
+    var tapX = 0, tapY = 0, tapMove = 0, tapOK = false;
     // touches は画面上の全タッチを数えるため、移動スティックを握った指まで含まれてしまい、
     // 「歩きながら視点ドラッグ」が 2 本指＝ピンチと誤判定される。この層で始まった指だけを見る。
     function fingers(e) { return e.targetTouches; }
@@ -733,8 +876,10 @@
     }
     function grab(t) { id = t.identifier; lastX = t.clientX; lastY = t.clientY; }
     layer.addEventListener("touchstart", function (e) {
-      if (fingers(e).length >= 2) { pinchD = gap(e); id = null; return; }
-      grab(e.changedTouches[0]);
+      if (fingers(e).length >= 2) { pinchD = gap(e); id = null; tapOK = false; return; }
+      var t0 = e.changedTouches[0];
+      grab(t0);
+      tapX = t0.clientX; tapY = t0.clientY; tapMove = 0; tapOK = true;
     }, { passive: true });
     layer.addEventListener("touchmove", function (e) {
       if (fingers(e).length >= 2) {
@@ -743,12 +888,13 @@
           camera.fov = clamp(camera.fov * (pinchD / d), 15, 78);
           camera.updateProjectionMatrix();
         }
-        pinchD = d;
+        pinchD = d; tapOK = false;
         return;
       }
       for (var i = 0; i < e.changedTouches.length; i++) {
         var t = e.changedTouches[i]; if (t.identifier !== id) continue;
         var dx = t.clientX - lastX, dy = t.clientY - lastY; lastX = t.clientX; lastY = t.clientY;
+        tapMove += Math.abs(dx) + Math.abs(dy);
         // 指でつかんだ景色がそのまま指についてくる向き（ストリートビュー式）。
         // マウス視点と同じ符号にすると、タッチでは逆に感じられる。
         lookEuler.y += dx * LOOK_SENS; lookEuler.x += dy * LOOK_SENS;
@@ -758,6 +904,13 @@
     }, { passive: true });
     layer.addEventListener("touchend", function (e) {
       if (fingers(e).length < 2) pinchD = 0;
+      // 指をほとんど動かさずに離した＝タップ。その場所のキャラに話しかける。
+      // 「速さ」は条件にしない。ゆっくり触っただけでもタップのつもりなので、
+      // 視点ドラッグと区別できればよく、それは移動量だけで足りる。
+      if (tapOK && !fingers(e).length && tapMove < 12) {
+        talkAtClient(tapX, tapY);
+      }
+      if (!fingers(e).length) tapOK = false;
       // ピンチをやめて1本残ったら、その指を基準に取り直す（残像ぶんの飛びを防ぐ）
       if (fingers(e).length === 1) grab(fingers(e)[0]); else if (!fingers(e).length) id = null;
     }, { passive: true });
@@ -809,6 +962,41 @@
     keys["Space"] = false; keys["ShiftLeft"] = false; keys["ControlLeft"] = false;
     updateFlyBadge(); setFlyButtons();
   }, { passive: false });
+
+  // ---- 話しかける（キャラをタップ／クリック） -----------------------------
+  var talkRay = new THREE.Raycaster();
+  talkRay.far = TALK_RANGE;
+  var talkNdc = new THREE.Vector2();
+  var _talkMeshes = null;
+  function talkMeshes() {
+    // 住人は初期化時に出そろうので一度だけ組む（毎フレームのレイキャストで使う）
+    if (!_talkMeshes) {
+      _talkMeshes = [];
+      for (var i = 0; i < walkers.length; i++) {
+        if (walkers[i].lines) _talkMeshes.push(walkers[i].rec.mesh);
+      }
+    }
+    return _talkMeshes;
+  }
+  function aimHit(nx, ny) {
+    talkNdc.set(nx, ny);
+    talkRay.setFromCamera(talkNdc, camera);
+    return talkRay.intersectObjects(talkMeshes(), false)[0];
+  }
+  function talkAt(nx, ny) {
+    var hit = aimHit(nx, ny);
+    if (hit) speak(hit.object.userData.walker);
+  }
+  function talkAtClient(px, py) {
+    talkAt((px / window.innerWidth) * 2 - 1, -(py / window.innerHeight) * 2 + 1);
+  }
+  // PC は視点ロック中でカーソルが無いので、画面中央（照準）で狙ってクリック
+  document.addEventListener("click", function () { if (controls.isLocked) talkAt(0, 0); });
+  // 照準がキャラに乗ったら印を出す（PCのみ。スマホは照準を出していない）
+  function updateAim() {
+    if (isTouch || !controls.isLocked) return;
+    crosshair.classList.toggle("aim", !!aimHit(0, 0));
+  }
 
   // ---- BGM / 動画音 -------------------------------------------------------
   var bgm = document.getElementById("bgm");
@@ -922,6 +1110,8 @@
     // 住人の歩行・飛行
     updateWalkers(dt, tsec);
     updateFloaters(dt, tsec);
+    updateBubbles(tsec);
+    updateAim();
     if (active()) ensureVideosPlaying();
     // 光背の回転
     if (statueGroup) { statueGroup.children.forEach(function (o) { if (o.geometry && o.geometry.type === "TorusGeometry") o.rotation.z += dt * 0.4; }); }

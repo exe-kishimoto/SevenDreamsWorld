@@ -106,6 +106,19 @@ Three.js は r128（クラシックなグローバルビルド、CDN読み込み
   `rotation.y = Math.PI` で正対する。正対させると絵の左端が +x 側に来るので、
   ノーズ左の素材は `dir = +1`（+x へ進行＝画面では右→左）にしてノーズを先頭にする。
 
+### 住人に話しかける（吹き出し）
+
+- **住人をタップ（スマホ）／照準を合わせてクリック（PC）すると吹き出しが出る**。
+  もう一度で次の台詞へ。`TALK_SEC` 秒で自動的に消え、話している間その住人は立ち止まる。
+- 台詞は `addMascotWalker(file, width, name, lines)` / `addPersonWalker(file, name, lines)` の
+  引数で渡す（**文言を変えるのは末尾の住人配置の配列**）。`lines` を渡さない住人は話しかけ対象外。
+- 吹き出しは `makeBubbleTex` の Canvas（白い紙・黒い輪郭・しっぽ・赤い名前）を貼った板ポリで、
+  毎フレーム `quaternion.copy(camera.quaternion)` で常にこちらを向く。頭上に置く。
+- 当たり判定は `colliders` ではなく **`THREE.Raycaster`**（`talkMeshes()` の立ち絵だけが対象、
+  `far = TALK_RANGE`）。立ち絵は透明部分も含む板なので、当たりはやや広め＝タップしやすい。
+- **タップ判定に「速さ」を入れないこと**。ゆっくり触ってもタップのつもりなので、
+  視点ドラッグと区別できればよく、それは移動量（`tapMove`）だけで足りる。
+
 ### 中央の銅像モニュメント（`addStatueMonument`）
 
 - 多段の白い台座（`tier()`：赤トリム＋灰縁）＋四隅の**金の装飾柱**＋**金の光背リング**（回転）＋
@@ -146,7 +159,7 @@ Three.js は r128（クラシックなグローバルビルド、CDN読み込み
 
 - 動画・BGMの自動再生はブラウザポリシー上、**ユーザー操作（スタートのクリック/タップ）後**に開始。
   動画は必ずミュート開始、音は `M`／ボタンで。
-- キャラを増やすときは `addStandee(file, x, z, w, faceAng[, floatY])`。`floatY` を渡すと浮遊キャラ。
+- キャラを増やすときは `addMascotWalker(file, width, name, lines)`。`lines` を渡すと話しかけられる。
 - キャラ立ち絵を作り直すときは `ph-music-01.png` を透明背景の連結成分でスライスする
   （左→右順に smile / next / air / punch / move / hope / heart）。
 - Canvas テクスチャは 4096px を超えないよう注意。
