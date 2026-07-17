@@ -513,13 +513,17 @@
     npx.strokeStyle = "#E2B060"; npx.lineWidth = 18; npx.strokeRect(9, 9, 1006, 238);
     npx.textAlign = "center"; npx.textBaseline = "middle";
     npx.fillStyle = "#ffe6b0";
-    npx.font = "bold 42px 'Arial','Helvetica',sans-serif";
-    npx.fillText("Seven Dreams Group", 512, 48);
+    npx.font = "bold 40px 'Arial','Helvetica',sans-serif";
+    npx.fillText("Seven Dreams Group", 512, 74);
+    // 名前が主役。金枠に収まる範囲でできるだけ大きく組む
     npx.fillStyle = "#fff";
-    npx.font = "bold 80px 'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif";
-    npx.fillText("夢を司る神", 512, 130);
-    npx.font = "bold 46px 'Arial','Helvetica',sans-serif";
-    npx.fillText("Toshiya Takeda", 512, 210);
+    var NAME = "Toshiya Takeda", nsize = 120;
+    npx.font = "bold " + nsize + "px 'Arial','Helvetica',sans-serif";
+    while (npx.measureText(NAME).width > 900 && nsize > 40) {
+      nsize -= 2;
+      npx.font = "bold " + nsize + "px 'Arial','Helvetica',sans-serif";
+    }
+    npx.fillText(NAME, 512, 162);
     var plate = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.6, 0.3), [
       colMat, colMat, colMat, colMat,
       new THREE.MeshBasicMaterial({ map: texFromCanvas(npc) }), colMat
