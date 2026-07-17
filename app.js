@@ -838,16 +838,13 @@
     addPersonWalker("asset/people/person-" + pi + ".png?cb=" + Date.now(),
       PEOPLE_LINES[pi - 1][0], PEOPLE_LINES[pi - 1][1]);
   }
-  // 空を横切る小鳥（air）— 飛行機よりずっと低く、建物・木の高さあたりを飛ぶ。
+  // 空を横切る小鳥（air）は1羽だけ。飛行機よりずっと低く、建物・木の高さあたりを飛ぶ。
   // 7体のうち air だけ空にいるが、見上げてタップすれば同じように話しかけられる
-  var AIR_LINES = [
+  addBird(1.2, 5.5, "エア", [
     "空から見ると、まちがよく見える。",
     "上を向いてごらん。気持ちいいよ。",
     "浮遊モードなら、ここまで来られるよ。"
-  ];
-  addBird(1.2, 4.5, "エア", AIR_LINES);
-  addBird(1.0, 6.0, "エア", AIR_LINES);
-  addBird(1.1, 7.5, "エア", AIR_LINES);
+  ]);
   // 上空を横切る飛行機は1機だけ（asset/plane/plane.png を使用、無ければ線画）。鳥より高く飛ぶ
   addAirplane(7, 27);
 
