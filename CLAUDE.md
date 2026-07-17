@@ -57,7 +57,7 @@ start.bat をダブルクリック
 
 | ディレクトリ | 用途 | 現在のファイル |
 |---|---|---|
-| **`asset/bgm/`** | **BGM** を置く。`bgm.mp3`（推奨）または `bgm.ogg`。ループ再生。無ければ無音 | （未配置。`bgm.mp3` を置くと自動再生） |
+| **`asset/bgm/`** | **BGM**。ファイル名は `index.html` の `<audio id="bgm">` の `<source src>` で直接指定する | `nanaironotaiyou_vo-2db.mp3` |
 | **`asset/monitor/video/`** | **動画モニター**に映す動画。`video-1.mp4` | `video-1.mp4` |
 | **`asset/monitor/image/`** | **静止画モニター**に映す画像。`image-1.png` | `image-1.png` |
 | **`asset/plane/`** | **飛行機**の画像（横向き・ノーズ左推奨の透明PNG）。`plane.png` | 未配置（無ければ線画の飛行機） |
@@ -67,7 +67,8 @@ start.bat をダブルクリック
 | `asset/statue/` | 銅像の肖像（`takeda_main_...jpg` をブロンズ2階調に加工） | `takeda_bronze.png`, `takeda_face.png` |
 | `asset/kv/` | キービジュアル参考 | `kv-pc.png` |
 
-- **BGMの置き場所**: `asset/bgm/bgm.mp3` に置くだけ。スタート画面をクリック（＝ユーザー操作）した
+- **BGMの置き場所**: `asset/bgm/` に置き、`index.html` の `<source src>` をそのファイル名に合わせる。
+  スタート画面をクリック（＝ユーザー操作）した
   瞬間に再生開始（ブラウザの自動再生ポリシー対応）。画面右上の「♪ BGM」ボタン / `B` キーで ON/OFF。
 - **動画の差し替え**: `asset/monitor/video/video-1.mp4` を置き換える。音声は既定ミュート、
   「🔇 動画」ボタン / `M` キーで ON/OFF（自動再生ポリシー上ミュート開始が必須）。
@@ -122,7 +123,13 @@ Three.js は r128（クラシックなグローバルビルド、CDN読み込み
   移動は楕円ステージ内に `clampToGround` でクランプ。
 - WASD移動 / Shift走る / Space ジャンプ / ホイール=FOVズーム / **F**=浮遊モード
   （重力なし・Space上昇/Shift下降/Ctrl加速）/ **B**=BGM / **M**=動画音 / ESC=ロック解除。
-- スマホ：右下スティック移動・画面ドラッグ視点・左下ボタン（跳/走/浮）。`isTouch` で分岐。
+- スマホ：右下スティック移動・画面ドラッグ視点・**ピンチでズーム**・左下ボタン（跳/走/浮）。
+  `isTouch` で分岐し、キー操作前提の HUD と操作ガイドは非表示、浮遊バッジも短い文言に差し替える。
+  - **視点ドラッグはストリートビュー式**（指でつかんだ景色が指についてくる＝マウス視点とは符号が逆）。
+    向きを変えるなら `setupTouchLook` の `lookEuler.y += / .x +=` の符号。
+  - 固定配置のUIは `env(safe-area-inset-*)` を `--sat/--sar/--sab/--sal` 経由で余白に加算する
+    （`viewport-fit=cover` のためノッチ／ホームバーに潜り込む）。狭幅は `max-width:480px`、
+    横画面は `max-height:430px` のメディアクエリで縮小。**UIを足したら重なりを実測すること**。
 
 ## 変更時の注意
 

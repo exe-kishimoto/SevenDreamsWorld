@@ -663,7 +663,8 @@
   function updateFlyBadge() { flyBadge.style.display = (flyMode && active()) ? "block" : "none"; }
   function showUI(on) {
     crosshair.style.display = on && !isTouch ? "block" : "none";
-    hud.style.display = on ? "block" : "none";
+    // HUD はキー操作の案内。タッチでは左下のボタンと重なるうえ内容も無意味なので出さない
+    hud.style.display = on && !isTouch ? "block" : "none";
     titleBadge.style.display = on ? "block" : "none";
     guide.style.display = on && !isTouch ? "block" : "none";
     topbtns.style.display = on ? "flex" : "none";
@@ -673,6 +674,8 @@
     document.getElementById("keys-desktop").style.display = "none";
     document.getElementById("keys-mobile").style.display = "block";
     document.getElementById("start-btn").textContent = "タップしてスタート";
+    // 既定の文言はキー操作つきで横に長く、縦画面でタイトルバッジに突き当たる
+    flyBadge.textContent = "✈ 浮遊モード ON";
   }
 
   function startMobile() {
@@ -707,36 +710,62 @@
     camera.fov = clamp(camera.fov + e.deltaY * 0.02, 15, 78); camera.updateProjectionMatrix();
   }, { passive: true });
 
-  // タッチ：視点ドラッグ
+  // タッチ：視点ドラッグ（1本指）／ FOV ズーム（2本指ピンチ）
   (function setupTouchLook() {
     var layer = document.getElementById("look-layer");
-    var lastX = 0, lastY = 0, id = null;
+    var lastX = 0, lastY = 0, id = null, pinchD = 0;
+    function gap(e) {
+      var a = e.touches[0], b = e.touches[1];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    }
+    function grab(t) { id = t.identifier; lastX = t.clientX; lastY = t.clientY; }
     layer.addEventListener("touchstart", function (e) {
-      var t = e.changedTouches[0]; id = t.identifier; lastX = t.clientX; lastY = t.clientY;
+      if (e.touches.length >= 2) { pinchD = gap(e); id = null; return; }
+      grab(e.changedTouches[0]);
     }, { passive: true });
     layer.addEventListener("touchmove", function (e) {
+      if (e.touches.length >= 2) {
+        var d = gap(e);
+        if (pinchD > 0 && d > 0) {
+          camera.fov = clamp(camera.fov * (pinchD / d), 15, 78);
+          camera.updateProjectionMatrix();
+        }
+        pinchD = d;
+        return;
+      }
       for (var i = 0; i < e.changedTouches.length; i++) {
         var t = e.changedTouches[i]; if (t.identifier !== id) continue;
         var dx = t.clientX - lastX, dy = t.clientY - lastY; lastX = t.clientX; lastY = t.clientY;
-        lookEuler.y -= dx * LOOK_SENS; lookEuler.x -= dy * LOOK_SENS;
+        // 指でつかんだ景色がそのまま指についてくる向き（ストリートビュー式）。
+        // マウス視点と同じ符号にすると、タッチでは逆に感じられる。
+        lookEuler.y += dx * LOOK_SENS; lookEuler.x += dy * LOOK_SENS;
         lookEuler.x = clamp(lookEuler.x, -PITCH_MAX, PITCH_MAX);
         camera.quaternion.setFromEuler(lookEuler);
       }
     }, { passive: true });
-    layer.addEventListener("touchend", function () { id = null; }, { passive: true });
+    layer.addEventListener("touchend", function (e) {
+      if (e.touches.length < 2) pinchD = 0;
+      // ピンチをやめて1本残ったら、その指を基準に取り直す（残像ぶんの飛びを防ぐ）
+      if (e.touches.length === 1) grab(e.touches[0]); else if (!e.touches.length) id = null;
+    }, { passive: true });
   })();
 
   // タッチ：ジョイスティック
   (function setupJoystick() {
     var stick = document.getElementById("joystick"), knob = document.getElementById("joy-knob");
-    var cx = 0, cy = 0, R = 48, id = null;
-    function set(cli) { var r = stick.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
+    var cx = 0, cy = 0, R = 48, KH = 28, id = null;
+    // 画面幅でスティックの寸法が変わるので、可動半径はその都度実寸から出す
+    function set() {
+      var r = stick.getBoundingClientRect();
+      cx = r.left + r.width / 2; cy = r.top + r.height / 2;
+      KH = knob.offsetWidth / 2; R = r.width / 2 - KH;
+    }
     stick.addEventListener("touchstart", function (e) { set(); var t = e.changedTouches[0]; id = t.identifier; move(t); }, { passive: true });
     stick.addEventListener("touchmove", function (e) { for (var i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === id) move(e.changedTouches[i]); } }, { passive: true });
     stick.addEventListener("touchend", function () { id = null; joy.active = false; joy.x = joy.y = 0; knob.style.transform = "translate(-50%,-50%)"; }, { passive: true });
     function move(t) {
       var dx = clamp(t.clientX - cx, -R, R), dy = clamp(t.clientY - cy, -R, R);
-      knob.style.transform = "translate(" + (dx - 28) + "px," + (dy - 28) + "px)";
+      knob.style.transform = "translate(" + (dx - KH) + "px," + (dy - KH) + "px)";
       joy.active = true; joy.x = dx / R; joy.y = -dy / R;
     }
   })();

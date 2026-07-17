@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Seven Dreams World — 夢と生きる。</title>
 <style>
-  :root { --sd-red:#E60013; }
+  :root {
+    --sd-red:#E60013;
+    /* viewport-fit=cover のため、ノッチ／ホームバーぶんを各UIの余白に足す */
+    --sat:env(safe-area-inset-top, 0px);
+    --sar:env(safe-area-inset-right, 0px);
+    --sab:env(safe-area-inset-bottom, 0px);
+    --sal:env(safe-area-inset-left, 0px);
+  }
   html, body {
     margin:0; padding:0; overflow:hidden; background:#fff; height:100%;
     touch-action:none; overscroll-behavior:none;
@@ -67,14 +74,14 @@
     z-index:10; display:none; pointer-events:none;
   }
   #hud {
-    position:fixed; left:14px; bottom:12px; z-index:10; display:none;
+    position:fixed; left:calc(14px + var(--sal)); bottom:calc(12px + var(--sab)); z-index:10; display:none;
     font-size:12px; color:#555; background:rgba(255,255,255,0.75);
     padding:8px 12px; border-radius:8px; line-height:1.7; pointer-events:none;
     border:1px solid rgba(230,0,19,0.2);
   }
   #hud b { color:var(--sd-red); }
   #title-badge {
-    position:fixed; right:14px; top:12px; z-index:10; display:none;
+    position:fixed; right:calc(14px + var(--sar)); top:calc(12px + var(--sat)); z-index:10; display:none;
     font-size:12px; color:#555; background:rgba(255,255,255,0.8);
     padding:8px 12px; border-radius:8px; pointer-events:none; text-align:right;
     border:1px solid rgba(230,0,19,0.2);
@@ -82,7 +89,7 @@
   #title-badge b { color:var(--sd-red); }
 
   #controls-guide {
-    position:fixed; right:14px; bottom:14px; z-index:10; display:none;
+    position:fixed; right:calc(14px + var(--sar)); bottom:calc(14px + var(--sab)); z-index:10; display:none;
     background:rgba(255,255,255,0.85); border:1px solid rgba(230,0,19,0.3);
     border-radius:10px; padding:11px 13px; pointer-events:none;
     color:#555; font-size:12px; line-height:1.75; min-width:190px;
@@ -101,13 +108,14 @@
   #controls-guide .desc { color:#666; }
 
   #fly-badge {
-    position:fixed; left:14px; top:12px; z-index:10; display:none;
+    position:fixed; left:calc(14px + var(--sal)); top:calc(12px + var(--sat)); z-index:10; display:none;
+    max-width:52vw;
     background:var(--sd-red); color:#fff; border-radius:16px; padding:5px 14px;
     font-size:12px; font-weight:bold; pointer-events:none; letter-spacing:0.04em;
   }
 
   /* 上部のミニボタン（BGM / 動画音）— タイトルバッジ（top:12・2行）と重ならないよう下げる */
-  #topbtns { position:fixed; right:14px; top:78px; z-index:13; display:none; gap:8px; }
+  #topbtns { position:fixed; right:calc(14px + var(--sar)); top:calc(78px + var(--sat)); z-index:13; display:none; gap:8px; }
   #topbtns button {
     width:auto; min-width:44px; height:40px; padding:0 12px; border-radius:20px;
     background:rgba(255,255,255,0.9); border:1.5px solid rgba(230,0,19,0.45);
@@ -121,7 +129,8 @@
   #touch-ui { position:fixed; inset:0; z-index:12; display:none; pointer-events:none; }
   #touch-ui * { pointer-events:auto; touch-action:none; -webkit-tap-highlight-color:transparent; }
   #joystick {
-    position:fixed; right:26px; bottom:34px; width:130px; height:130px; border-radius:50%;
+    position:fixed; right:calc(26px + var(--sar)); bottom:calc(34px + var(--sab));
+    width:130px; height:130px; border-radius:50%;
     background:rgba(255,255,255,0.35); border:2px solid rgba(230,0,19,0.45);
   }
   #joy-knob {
@@ -129,7 +138,10 @@
     background:radial-gradient(circle at 40% 35%, #ff5566, var(--sd-red));
     border:2px solid rgba(255,255,255,0.7); transform:translate(-50%,-50%);
   }
-  #touch-buttons { position:fixed; left:20px; bottom:30px; display:flex; flex-direction:column-reverse; gap:12px; }
+  #touch-buttons {
+    position:fixed; left:calc(20px + var(--sal)); bottom:calc(30px + var(--sab));
+    display:flex; flex-direction:column-reverse; gap:12px;
+  }
   .tbtn {
     display:flex; align-items:center; justify-content:center; font-family:inherit; font-weight:bold;
     color:#fff; background:var(--sd-red); border:2px solid rgba(255,255,255,0.6);
@@ -139,6 +151,37 @@
   .tbtn.small { width:56px; height:56px; font-size:12px; }
   .tbtn.on { background:#8a000c; }
   #touch-small-row { display:flex; gap:12px; }
+
+  /* 縦画面の細い端末：操作系が画面幅に収まらず重なるのでひと回り小さくする */
+  @media (max-width: 480px) {
+    #title-badge { font-size:11px; padding:6px 9px; }
+    #topbtns { top:calc(68px + var(--sat)); }
+    #topbtns button { min-width:40px; height:36px; padding:0 10px; font-size:12px; }
+    #fly-badge { font-size:11px; padding:4px 11px; }
+    #joystick { right:calc(16px + var(--sar)); bottom:calc(22px + var(--sab)); width:116px; height:116px; }
+    #joy-knob { width:50px; height:50px; }
+    #touch-buttons { left:calc(14px + var(--sal)); bottom:calc(22px + var(--sab)); gap:10px; }
+    .tbtn.big { width:72px; height:72px; font-size:13px; }
+    .tbtn.small { width:50px; height:50px; font-size:11px; }
+    #touch-small-row { gap:10px; }
+    #overlay h1 { font-size:26px; }
+    #overlay .panel, #gate .gate-panel { padding:22px 18px; }
+  }
+  /* 横画面で高さが足りない端末：縦に積むUIが上下ではみ出すため詰める */
+  @media (max-height: 430px) {
+    /* バッジを縮めてから、その下にボタンを置く（縮めないと 2 行のバッジに突き当たる） */
+    #title-badge { font-size:11px; padding:6px 9px; }
+    #topbtns { top:calc(66px + var(--sat)); }
+    #topbtns button { min-width:40px; height:36px; padding:0 10px; font-size:12px; }
+    #joystick { width:104px; height:104px; bottom:calc(14px + var(--sab)); }
+    #joy-knob { width:46px; height:46px; }
+    #touch-buttons { bottom:calc(14px + var(--sab)); gap:8px; }
+    .tbtn.big { width:62px; height:62px; font-size:12px; }
+    .tbtn.small { width:46px; height:46px; font-size:11px; }
+    #overlay h1 { font-size:22px; }
+    #overlay .start { margin-bottom:12px; padding:10px 26px; }
+    #overlay .panel { padding:14px 18px; }
+  }
 </style>
 </head>
 <body>
@@ -183,8 +226,8 @@
       <b>ESC</b>：カーソル表示
     </div>
     <div class="keys" id="keys-mobile" style="display:none">
-      <b>右下スティック</b>：移動　<b>画面ドラッグ</b>：視点<br>
-      左下ボタン：<b>ジャンプ / 走る / 浮遊</b>　上部：<b>BGM / 動画音</b>
+      <b>右下スティック</b>：移動　<b>画面ドラッグ</b>：視点　<b>ピンチ</b>：ズーム<br>
+      左下ボタン：<b>ジャンプ / 走る / 浮遊</b>　右上：<b>BGM / 動画音</b>
     </div>
   </div>
 </div>
@@ -230,6 +273,6 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/PointerLockControls.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
