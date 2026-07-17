@@ -421,11 +421,13 @@
   function addAirplane(size, h) {
     var mat = new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.4, side: THREE.DoubleSide });
     var mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-    // ノーズ左の絵。rotation.y=0 で -x 方向へ進む（＝右→左の逆＝左→右に飛ぶ）
-    mesh.userData.shadow = "none"; mesh.rotation.y = 0;
+    // 来場者は南(-z)から北を向いて見る＝画面の右がワールドの -x。rotation.y=0 のままだと
+    // 絵が左右反転して見え、plane.png の "TRAVEL" が鏡文字になる。PI 回して正対させる。
+    // これで絵の左端（ノーズ）が +x 側に来るので、進行方向も +x（dir=+1）にしてノーズを先頭にする。
+    mesh.userData.shadow = "none"; mesh.rotation.y = Math.PI;
     var z = rand(18, 40);
     mesh.position.set(rand(-WRAP, WRAP), h, z); scene.add(mesh);
-    floaters.push({ mesh: mesh, y: h, speed: rand(5, 7), phase: rand(0, 6.28), plane: true, dir: -1 });
+    floaters.push({ mesh: mesh, y: h, speed: rand(5, 7), phase: rand(0, 6.28), plane: true, dir: 1 });
     function apply(tex) { mesh.scale.set(size, size * tex.image.height / tex.image.width, 1); mat.map = tex; mat.needsUpdate = true; }
     var fallback = makePlaneTex();
     new THREE.TextureLoader().load("asset/plane/plane.png?cb=" + Date.now(),
@@ -630,7 +632,7 @@
   addBird(1.2, 4.5);
   addBird(1.0, 6.0);
   addBird(1.1, 7.5);
-  // 上空を横切る飛行機は1機だけ（asset/plane/plane.png を使用、無ければ線画）。鳥より高く、逆向きに飛ぶ
+  // 上空を横切る飛行機は1機だけ（asset/plane/plane.png を使用、無ければ線画）。鳥より高く飛ぶ
   addAirplane(7, 27);
 
   // ---- 影の一括設定 -------------------------------------------------------
@@ -709,7 +711,7 @@
   window.addEventListener("keydown", function (e) {
     keys[e.code] = true;
     if (e.code === "Space") e.preventDefault();
-    if (e.code === "KeyF" && !e.repeat) { flyMode = !flyMode; velY = 0; updateFlyBadge(); }
+    if (e.code === "KeyF" && !e.repeat) { flyMode = !flyMode; velY = 0; updateFlyBadge(); setFlyButtons(); }
     if (e.code === "KeyB" && !e.repeat) toggleBGM();
     if (e.code === "KeyM" && !e.repeat) toggleMovie();
   });
@@ -722,17 +724,20 @@
   (function setupTouchLook() {
     var layer = document.getElementById("look-layer");
     var lastX = 0, lastY = 0, id = null, pinchD = 0;
+    // touches は画面上の全タッチを数えるため、移動スティックを握った指まで含まれてしまい、
+    // 「歩きながら視点ドラッグ」が 2 本指＝ピンチと誤判定される。この層で始まった指だけを見る。
+    function fingers(e) { return e.targetTouches; }
     function gap(e) {
-      var a = e.touches[0], b = e.touches[1];
+      var a = e.targetTouches[0], b = e.targetTouches[1];
       return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     }
     function grab(t) { id = t.identifier; lastX = t.clientX; lastY = t.clientY; }
     layer.addEventListener("touchstart", function (e) {
-      if (e.touches.length >= 2) { pinchD = gap(e); id = null; return; }
+      if (fingers(e).length >= 2) { pinchD = gap(e); id = null; return; }
       grab(e.changedTouches[0]);
     }, { passive: true });
     layer.addEventListener("touchmove", function (e) {
-      if (e.touches.length >= 2) {
+      if (fingers(e).length >= 2) {
         var d = gap(e);
         if (pinchD > 0 && d > 0) {
           camera.fov = clamp(camera.fov * (pinchD / d), 15, 78);
@@ -752,9 +757,9 @@
       }
     }, { passive: true });
     layer.addEventListener("touchend", function (e) {
-      if (e.touches.length < 2) pinchD = 0;
+      if (fingers(e).length < 2) pinchD = 0;
       // ピンチをやめて1本残ったら、その指を基準に取り直す（残像ぶんの飛びを防ぐ）
-      if (e.touches.length === 1) grab(e.touches[0]); else if (!e.touches.length) id = null;
+      if (fingers(e).length === 1) grab(fingers(e)[0]); else if (!fingers(e).length) id = null;
     }, { passive: true });
   })();
 
@@ -783,14 +788,26 @@
     el.addEventListener("touchstart", function (e) { e.preventDefault(); on(); }, { passive: false });
     if (off) el.addEventListener("touchend", function (e) { e.preventDefault(); off(); }, { passive: false });
   }
-  bindBtn("tb-jump", function () { if (flyMode) { keys["Space"] = true; } else if (onGround) { velY = JUMP_V; onGround = false; } }, function () { keys["Space"] = false; });
+  bindBtn("tb-jump", function () { if (onGround) { velY = JUMP_V; onGround = false; } }, null);
+  bindBtn("tb-up", function () { keys["Space"] = true; }, function () { keys["Space"] = false; });
   bindBtn("tb-down", function () { keys["ShiftLeft"] = true; }, function () { keys["ShiftLeft"] = false; });
-  bindBtn("tb-run", function () { keys["ShiftLeft"] = true; }, function () { keys["ShiftLeft"] = false; });
-  document.getElementById("tb-fly").addEventListener("touchstart", function (e) {
-    e.preventDefault(); flyMode = !flyMode; velY = 0; updateFlyBadge();
+  // 浮遊中の Shift は下降に使うので、「走る」は加速(Ctrl)へ振り分ける
+  bindBtn("tb-run",
+    function () { if (flyMode) keys["ControlLeft"] = true; else keys["ShiftLeft"] = true; },
+    function () { keys["ControlLeft"] = false; keys["ShiftLeft"] = false; });
+
+  // 浮遊中は「ジャンプ」を上昇／下降の2つに入れ替える（従来は下降しか出ず上昇できなかった）
+  function setFlyButtons() {
     document.getElementById("tb-jump").style.display = flyMode ? "none" : "flex";
+    document.getElementById("tb-up").style.display = flyMode ? "flex" : "none";
     document.getElementById("tb-down").style.display = flyMode ? "flex" : "none";
-    this.classList.toggle("on", flyMode);
+    document.getElementById("tb-fly").classList.toggle("on", flyMode);
+  }
+  document.getElementById("tb-fly").addEventListener("touchstart", function (e) {
+    e.preventDefault();
+    flyMode = !flyMode; velY = 0;
+    keys["Space"] = false; keys["ShiftLeft"] = false; keys["ControlLeft"] = false;
+    updateFlyBadge(); setFlyButtons();
   }, { passive: false });
 
   // ---- BGM / 動画音 -------------------------------------------------------

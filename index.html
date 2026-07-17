@@ -128,8 +128,9 @@
   #look-layer { position:fixed; inset:0; z-index:2; display:none; touch-action:none; background:transparent; }
   #touch-ui { position:fixed; inset:0; z-index:12; display:none; pointer-events:none; }
   #touch-ui * { pointer-events:auto; touch-action:none; -webkit-tap-highlight-color:transparent; }
+  /* スマホゲームの標準どおり、移動スティックは左下・アクションは右下 */
   #joystick {
-    position:fixed; right:calc(26px + var(--sar)); bottom:calc(34px + var(--sab));
+    position:fixed; left:calc(26px + var(--sal)); bottom:calc(34px + var(--sab));
     width:130px; height:130px; border-radius:50%;
     background:rgba(255,255,255,0.35); border:2px solid rgba(230,0,19,0.45);
   }
@@ -139,17 +140,18 @@
     border:2px solid rgba(255,255,255,0.7); transform:translate(-50%,-50%);
   }
   #touch-buttons {
-    position:fixed; left:calc(20px + var(--sal)); bottom:calc(30px + var(--sab));
-    display:flex; flex-direction:column-reverse; gap:12px;
+    position:fixed; right:calc(20px + var(--sar)); bottom:calc(30px + var(--sab));
+    display:flex; flex-direction:column-reverse; align-items:flex-end; gap:12px;
   }
   .tbtn {
     display:flex; align-items:center; justify-content:center; font-family:inherit; font-weight:bold;
     color:#fff; background:var(--sd-red); border:2px solid rgba(255,255,255,0.6);
     border-radius:50%; outline:none; -webkit-appearance:none; appearance:none;
   }
-  .tbtn.big { width:82px; height:82px; font-size:14px; }
-  .tbtn.small { width:56px; height:56px; font-size:12px; }
-  .tbtn.on { background:#8a000c; }
+  .tbtn.big { width:82px; height:82px; font-size:13px; }
+  .tbtn.small { width:60px; height:60px; font-size:12px; }
+  /* ON はひと目で分かるように、色だけでなく白リングでも示す */
+  .tbtn.on { background:#8a000c; box-shadow:0 0 0 3px rgba(255,255,255,0.85); }
   #touch-small-row { display:flex; gap:12px; }
 
   /* 縦画面の細い端末：操作系が画面幅に収まらず重なるのでひと回り小さくする */
@@ -158,9 +160,9 @@
     #topbtns { top:calc(68px + var(--sat)); }
     #topbtns button { min-width:40px; height:36px; padding:0 10px; font-size:12px; }
     #fly-badge { font-size:11px; padding:4px 11px; }
-    #joystick { right:calc(16px + var(--sar)); bottom:calc(22px + var(--sab)); width:116px; height:116px; }
+    #joystick { left:calc(16px + var(--sal)); bottom:calc(22px + var(--sab)); width:116px; height:116px; }
     #joy-knob { width:50px; height:50px; }
-    #touch-buttons { left:calc(14px + var(--sal)); bottom:calc(22px + var(--sab)); gap:10px; }
+    #touch-buttons { right:calc(14px + var(--sar)); bottom:calc(22px + var(--sab)); gap:10px; }
     .tbtn.big { width:72px; height:72px; font-size:13px; }
     .tbtn.small { width:50px; height:50px; font-size:11px; }
     #touch-small-row { gap:10px; }
@@ -226,8 +228,8 @@
       <b>ESC</b>：カーソル表示
     </div>
     <div class="keys" id="keys-mobile" style="display:none">
-      <b>右下スティック</b>：移動　<b>画面ドラッグ</b>：視点　<b>ピンチ</b>：ズーム<br>
-      左下ボタン：<b>ジャンプ / 走る / 浮遊</b>　右上：<b>BGM / 動画音</b>
+      <b>左下スティック</b>：移動　<b>1本指ドラッグ</b>：視点　<b>2本指ピンチ</b>：ズーム<br>
+      右下ボタン：<b>ジャンプ / 走る / 浮遊</b>　右上：<b>BGM / 動画音</b>
     </div>
   </div>
 </div>
@@ -235,12 +237,14 @@
 <div id="look-layer"></div>
 <div id="touch-ui">
   <div id="joystick"><div id="joy-knob"></div></div>
+  <!-- 下から順に積む（column-reverse）。浮遊中は ジャンプ→下降・上昇 に入れ替わる -->
   <div id="touch-buttons">
-    <button id="tb-jump" class="tbtn big" type="button">跳</button>
-    <button id="tb-down" class="tbtn big" type="button" style="display:none">降</button>
+    <button id="tb-jump" class="tbtn big" type="button">ジャンプ</button>
+    <button id="tb-down" class="tbtn big" type="button" style="display:none">▼ 下降</button>
+    <button id="tb-up" class="tbtn big" type="button" style="display:none">▲ 上昇</button>
     <div id="touch-small-row">
-      <button id="tb-run" class="tbtn small" type="button">走</button>
-      <button id="tb-fly" class="tbtn small" type="button">浮</button>
+      <button id="tb-run" class="tbtn small" type="button">走る</button>
+      <button id="tb-fly" class="tbtn small" type="button">浮遊</button>
     </div>
   </div>
 </div>
