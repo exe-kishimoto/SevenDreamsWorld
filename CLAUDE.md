@@ -176,7 +176,9 @@ Three.js は r128（クラシックなグローバルビルド、CDN読み込み
 
 - 見た目は**屋外デジタルサイネージ（自立型）**：黒い筐体の上寄りに画面、下は無地パネル、
   床置きの台座で自立。画面は表裏の2枚に貼ってあるので裏から見ても映る。
-  下部パネルに赤いブランド銘板（`label`）。`makeVideoMat` は `VideoTexture`、
+  **文字（銘板・ラベル）は入れない**＝サイネージ本体と中身の映像だけを見せる。
+  読み込み中は文字なしの暗い画面（`makeBlankScreenTex`）で、**素材が読めなかったときだけ**
+  `makePlaceholderTex` の文字を出して原因が分かるようにしている。`makeVideoMat` は `VideoTexture`、
   `makeImageMat` は `TextureLoader`。読込前は `makePlaceholderTex` の「準備中」。
 - 参道の左右に1面ずつ配置（正面を来場者側へ向ける）。位置・向きは `addMonitor(...)` 呼び出しで調整。
 

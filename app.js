@@ -851,6 +851,15 @@
 
   // ---- モニター（動画1面 / 静止画1面） -----------------------------------
   var adVideos = [];
+  // 読み込み中の画面。**文字は出さない**（サイネージ本体と中身だけを見せるため）。
+  // 素材が読めなかったときだけ makePlaceholderTex の文字を出して原因が分かるようにする
+  function makeBlankScreenTex() {
+    var c = makeCanvas(512, 288), x = c.getContext("2d");
+    var g = x.createLinearGradient(0, 0, 0, 288);
+    g.addColorStop(0, "#20242a"); g.addColorStop(1, "#12151a");
+    x.fillStyle = g; x.fillRect(0, 0, 512, 288);
+    return texFromCanvas(c);
+  }
   function makePlaceholderTex(title, sub) {
     var c = makeCanvas(512, 288), x = c.getContext("2d");
     x.fillStyle = "#fff"; x.fillRect(0, 0, 512, 288);
@@ -864,7 +873,7 @@
   // 最新ファイルが必ず読まれるようキャッシュ無効化クエリを付ける（ローカル試作用）
   var CACHE_BUST = "?cb=" + Date.now();
   function makeVideoMat(src) {
-    var mat = new THREE.MeshBasicMaterial({ map: makePlaceholderTex("動画モニター", "VIDEO 読み込み中…"), side: THREE.DoubleSide });
+    var mat = new THREE.MeshBasicMaterial({ map: makeBlankScreenTex(), side: THREE.DoubleSide });
     var v = document.createElement("video");
     v.src = encodeURI(src) + CACHE_BUST;
     v.loop = true; v.muted = true; v.defaultMuted = true; v.playsInline = true; v.autoplay = true;
@@ -885,8 +894,11 @@
     return mat;
   }
   function makeImageMat(src) {
-    var mat = new THREE.MeshBasicMaterial({ map: makePlaceholderTex("静止画モニター", "IMAGE 読み込み中…"), side: THREE.DoubleSide });
-    new THREE.TextureLoader().load(encodeURI(src) + CACHE_BUST, function (t) { t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; mat.map = t; mat.needsUpdate = true; });
+    var mat = new THREE.MeshBasicMaterial({ map: makeBlankScreenTex(), side: THREE.DoubleSide });
+    new THREE.TextureLoader().load(encodeURI(src) + CACHE_BUST,
+      function (t) { t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; mat.map = t; mat.needsUpdate = true; },
+      undefined,
+      function () { mat.map = makePlaceholderTex("静止画", "画像が読み込めません"); mat.needsUpdate = true; });
     return mat;
   }
   function ensureVideosPlaying() {
@@ -897,7 +909,7 @@
   }
   // 屋外デジタルサイネージ（自立型）。脚2本ではなく、
   // 「黒い筐体（上に画面・下は無地パネル）＋床置きの台座」という実物の形にする
-  function addMonitor(x, z, rotY, w, h, screenMat, label) {
+  function addMonitor(x, z, rotY, w, h, screenMat) {
     var group = new THREE.Group();
     var BEZEL = 0.34;                       // 画面まわりの黒フチ
     // 画面の下の無地パネル（実機のこの余白が特徴）。大きくすると画面が高くなって
@@ -931,16 +943,7 @@
     );
     base.position.set(0, BASE_H / 2, 0); addEdges(base, 0x000000); group.add(base);
 
-    // 下部パネルのブランド銘板（赤）。実機の黒い余白にロゴが入る位置
-    var lc = makeCanvas(512, 96), lx = lc.getContext("2d");
-    lx.fillStyle = SD_RED_CSS; lx.fillRect(0, 0, 512, 96);
-    lx.fillStyle = "#fff"; lx.font = "bold 44px 'Hiragino Kaku Gothic ProN',sans-serif";
-    lx.textAlign = "center"; lx.textBaseline = "middle";
-    lx.fillText(label, 256, 50);
-    var plateY = cabY - cabH / 2 + LOWER * 0.5;
-    var plate = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.62, w * 0.62 * 96 / 512),
-      new THREE.MeshBasicMaterial({ map: texFromCanvas(lc) }));
-    plate.position.set(0, plateY, cabD / 2 + 0.01); plate.userData.shadow = "none"; group.add(plate);
+    // 下部パネルには何も入れない（サイネージ本体と中身の映像だけを見せる）
 
     group.position.set(x, 0, z); group.rotation.y = rotY;
     scene.add(group);
@@ -950,8 +953,8 @@
     addCollider(x, z, hx, hz, 0.2);
   }
   // 南の参道の左右に1面ずつ。画面は来場者（南の入口 ≈ (0,-30)）の方へ向ける
-  addMonitor(-13, -13, Math.atan2(0 - (-13), -30 - (-13)), 6, 3.4, makeVideoMat("asset/monitor/video/video-1.mp4"), "動画モニター");
-  addMonitor(13, -13, Math.atan2(0 - 13, -30 - (-13)), 6, 3.4, makeImageMat("asset/monitor/image/image-1.png"), "静止画モニター");
+  addMonitor(-13, -13, Math.atan2(0 - (-13), -30 - (-13)), 6, 3.4, makeVideoMat("asset/monitor/video/video-1.mp4"));
+  addMonitor(13, -13, Math.atan2(0 - 13, -30 - (-13)), 6, 3.4, makeImageMat("asset/monitor/image/image-1.png"));
 
   // ---- 住人を配置（左向きにゆっくり歩き回る＝パレード） ------------------
   // マスコット（ph-music-01.png の6体が地上を散策）
