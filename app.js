@@ -25,11 +25,8 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputEncoding = THREE.sRGBEncoding;
-  // **トーンマッピングは使わない**。ACES は明るい面の彩度を落とすので、
-  // ブランドレッド #E60013 が照らされた場所でピンク（サーモン）に転ぶ。
-  // 素直にクランプするほうが赤は赤のまま出る＝紙に赤インクを刷った見た目になる。
-  renderer.toneMapping = THREE.NoToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.body.appendChild(renderer.domElement);
@@ -45,12 +42,11 @@
   (function addSky() {
     var c = makeCanvas(8, 256), x = c.getContext("2d");
     var g = x.createLinearGradient(0, 0, 0, 256);
-    // 上へいくほど濃く、地平線へ向かって白い紙に抜ける（桜色は入れない＝ピンクを出さない）
-    g.addColorStop(0.0, "#2f8fd0");   // 天頂：いちばん濃い水色
-    g.addColorStop(0.25, "#54a8de");
-    g.addColorStop(0.50, "#8bc9ec");
-    g.addColorStop(0.75, "#c4e4f7");
-    g.addColorStop(1.0, "#f2fafd");   // 地平線：ほぼ白い紙
+    g.addColorStop(0.0, "#6fbfe8");   // 天頂：水色の画用紙
+    g.addColorStop(0.32, "#9ed6f2");
+    g.addColorStop(0.60, "#cfeafa");
+    g.addColorStop(0.82, "#f4fafd");  // 下のほうで白い紙に抜ける
+    g.addColorStop(1.0, "#ffe6ea");   // 地平線：桜色（街となじませる）
     x.fillStyle = g; x.fillRect(0, 0, 8, 256);
     // **toneMapped: false** が要る。ACES トーンマッピングを通すと淡い色が
     // 白に飛んで「空に色が付いていない」ように見える（雲も同じ理由で外す）
@@ -60,7 +56,7 @@
     );
     dome.userData.shadow = "none";
     scene.add(dome);
-    scene.background = new THREE.Color(0x54a8de);
+    scene.background = new THREE.Color(0x9ed6f2);
   })();
 
   // ---- 雲（紙を切り抜いたもこもこ） ---------------------------------------
@@ -139,10 +135,9 @@
     }
   }
 
-  // ライト。**光の色にピンク／桜色を混ぜないこと**（白い紙が薄いピンクに染まる）。
-  // 合計が 1 を大きく超えると赤が白飛びしてピンクに見えるので、強さは控えめにする
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xf2f4f6, 0.72));
-  var sun = new THREE.DirectionalLight(0xffffff, 0.72);
+  // ライト
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xffe3e7, 0.95));
+  var sun = new THREE.DirectionalLight(0xfff4ea, 0.85);
   sun.position.set(-40, 70, 40);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -151,7 +146,7 @@
   sun.shadow.camera.near = 10; sun.shadow.camera.far = 260;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.22));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
 
   // ---- マテリアル / アウトライン（ペーパー調） --------------------------
   function paperMat(color, rough) {
@@ -181,9 +176,8 @@
     hx.save();
     hx.beginPath(); hx.ellipse(512, 512, 500, 500, 0, 0, Math.PI * 2); hx.clip();
     hx.fillStyle = "#ffffff"; hx.fillRect(0, 0, 1024, 1024);
-    // 斜線。**薄い赤（半透明）は白地の上でピンクになる**ので、
-    // 色はブランドレッドのまま、線を細くして面の重さを調整する
-    hx.strokeStyle = SD_RED_CSS; hx.lineWidth = 2.5;
+    // 斜線
+    hx.strokeStyle = "rgba(230,0,19,0.16)"; hx.lineWidth = 7;
     for (var i = -1024; i < 1024; i += 22) {
       hx.beginPath(); hx.moveTo(i, 0); hx.lineTo(i + 1024, 1024); hx.stroke();
     }
@@ -201,7 +195,7 @@
     var pc = makeCanvas(512, 512), pxx = pc.getContext("2d");
     pxx.fillStyle = "#ffffff"; pxx.beginPath(); pxx.arc(256, 256, 250, 0, Math.PI * 2); pxx.fill();
     pxx.strokeStyle = SD_RED_CSS; pxx.lineWidth = 16; pxx.beginPath(); pxx.arc(256, 256, 240, 0, Math.PI * 2); pxx.stroke();
-    pxx.lineWidth = 3; pxx.strokeStyle = SD_RED_CSS;   // 半透明にするとピンクになる
+    pxx.lineWidth = 5; pxx.strokeStyle = "rgba(230,0,19,0.5)";
     for (var r = 60; r < 240; r += 40) { pxx.beginPath(); pxx.arc(256, 256, r, 0, Math.PI * 2); pxx.stroke(); }
     var plaza = new THREE.Mesh(new THREE.CircleGeometry(15, 64), new THREE.MeshStandardMaterial({ map: texFromCanvas(pc), roughness: 1, transparent: true }));
     plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.02;
@@ -350,9 +344,6 @@
     }
     g.position.set(x, 0, z);
     scene.add(g);
-    // 幹のぶんだけ当たり判定を置く（無いと人もキャラも木を通り抜ける）。
-    // 板ポリの見た目より細くして、木の絵の端をかすめる程度なら通れるようにする
-    addCollider(x, z, 0.45 * s, 0.45 * s, 0.1);
   }
   // 建物の間や外周に木を散らす（銅像・モニターも避けるため読み込み後に実行）
   function scatterTrees() {
@@ -395,26 +386,19 @@
 
   // 立ち絵は厚みゼロの板なので、向きを固定すると真横に回り込んだとき
   // 板を真横から見ることになって消えてしまう。毎フレームこちらを向かせる（Y軸だけ）。
-  //
-  // 左右反転は「**進行方向が画面のどちら向きに見えるか**」で決める。絵は左向きなので、
-  // 画面の左へ進んで見えるときが素のまま、右へ進んで見えるときだけ鏡にする。
-  // これを **進行方向ベクトル(vx,vz) と「画面右」ベクトルの内積**で判定すること。
-  // x 成分だけで判定すると、斜めや奥行き方向に歩くとき／カメラが東西を向いたときに
-  // 判定が逆になり、後ろ歩きに見える。
+  // 左右反転は「進行方向が画面のどちら向きに見えるか」で決める：
+  // 絵は左向き＝画面左へ進むときが素のまま、右へ進んで見えるときだけ鏡にする。
   var _camRight = new THREE.Vector3();
-  function faceCamera(rec, vx, vz) {
+  function faceCamera(rec, dirX) {
     var m = rec.mesh;
     m.rotation.y = Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z);
     camera.getWorldDirection(_fwd);
-    _camRight.set(-_fwd.z, 0, _fwd.x).normalize();        // 画面右にあたるワールド方向
-    var s = vx * _camRight.x + vz * _camRight.z;          // ＋なら画面右へ進んで見える
-    // 手前／奥へ歩いているときは左右がほぼ決まらない。前の向きを保ってちらつかせない
-    if (s > 0.12) { if (rec.flip !== -1) rec.setFlip(-1); }
-    else if (s < -0.12) { if (rec.flip !== 1) rec.setFlip(1); }
+    _camRight.set(-_fwd.z, 0, _fwd.x);                    // 画面右にあたるワールド方向
+    var f = (dirX * _camRight.x > 0) ? -1 : 1;
+    if (f !== rec.flip) rec.setFlip(f);
   }
 
-  // 街のどこか（銅像のまわりのリング内）を1点えらぶ。
-  // 建物・木・モニターの中（colliders）は行き先にしない＝住人が物体に刺さらない
+  // 街のどこか（銅像のまわりのリング内）を1点えらぶ。モニターの前は避ける
   function roamPoint(rMin, rMax) {
     for (var i = 0; i < 24; i++) {
       var a = rand(0, Math.PI * 2), r = rand(rMin, rMax);
@@ -423,7 +407,6 @@
         var dx = p.x - MONITORS[j].x, dz = p.z - MONITORS[j].z;
         if (dx * dx + dz * dz < 25) { ok = false; break; }
       }
-      if (ok && collides(p.x, p.z, 1.2)) ok = false;
       if (ok) return p;
     }
     return { x: 0, z: rMax };
@@ -454,7 +437,7 @@
   // 地上を歩く住人を1体登録する。街のどこかに立たせて、最初の行き先を決める
   function pushWalker(rec, speed, name, lines) {
     var wk = makeTalker(rec, name, lines);
-    wk.speed = speed; wk.phase = rand(0, 6.28); wk.vx = 0; wk.vz = 0;
+    wk.speed = speed; wk.phase = rand(0, 6.28); wk.dir = 1;
     var p = roamPoint(ROAM_MIN, ROAM_MAX);
     rec.mesh.position.set(p.x, rec.baseY, p.z);
     wk.target = roamPoint(ROAM_MIN, ROAM_MAX);
@@ -510,7 +493,7 @@
     rec.mesh.position.set(p.x, h, p.z);
     floaters.push({
       mesh: rec.mesh, rec: rec, y: h, speed: rand(1.0, 1.6), phase: rand(0, 6.28),
-      talk: talk, dir: 1, vx: 0, vz: 0, roam: true, target: roamPoint(BIRD_MIN, BIRD_MAX)
+      talk: talk, dir: 1, roam: true, target: roamPoint(BIRD_MIN, BIRD_MAX)
     });
     scene.add(rec.mesh);
   }
@@ -707,35 +690,29 @@
 
   // 行き先へ向かって歩き、着いたら次の行き先を決める。**位置を飛ばさない**ので
   // どこかで消えて別の場所から現れることがない＝ずっと街を歩き回って見える。
-  // 建物・木・モニターにぶつかる一歩は踏み出さず、その場で行き先を選び直す。
-  // 進んだ向きは w.vx / w.vz に入れて返す（立ち絵を鏡にするかの判断に使う）
-  function stepToward(w, m, speed, dt, rMin, rMax, solid) {
-    var t = w.target;
-    var dx = t.x - m.position.x, dz = t.z - m.position.z;
+  // 戻り値は進行方向の x 成分（＝立ち絵を鏡にするかの判断に使う）
+  function stepToward(m, target, speed, dt, rMin, rMax) {
+    var dx = target.x - m.position.x, dz = target.z - m.position.z;
     var d = Math.sqrt(dx * dx + dz * dz);
     if (d < 0.5) {                         // 着いたので次の行き先へ（その場で向きが変わるだけ）
-      var p = roamPoint(rMin, rMax); t.x = p.x; t.z = p.z;
-      w.vx = 0; w.vz = 0; return;
+      var p = roamPoint(rMin, rMax); target.x = p.x; target.z = p.z;
+      return 0;
     }
     var step = Math.min(speed * dt, d);
-    var nx = m.position.x + (dx / d) * step, nz = m.position.z + (dz / d) * step;
-    // すでに何かの中にいる場合まで止めると出られなくなるので、そのときは通す
-    if (solid && collides(nx, nz, 0.7) && !collides(m.position.x, m.position.z, 0.7)) {
-      var q = roamPoint(rMin, rMax); t.x = q.x; t.z = q.z;
-      w.vx = 0; w.vz = 0; return;
-    }
-    m.position.x = nx; m.position.z = nz;
-    w.vx = dx / d; w.vz = dz / d;
+    m.position.x += (dx / d) * step;
+    m.position.z += (dz / d) * step;
+    return dx;
   }
 
   function updateWalkers(dt, tsec) {
     for (var i = 0; i < walkers.length; i++) {
       var wk = walkers[i], m = wk.rec.mesh;
       if (tsec >= wk.talkUntil) {          // 話しかけられている間は立ち止まる
-        stepToward(wk, m, wk.speed, dt, ROAM_MIN, ROAM_MAX, true);
+        var dx = stepToward(m, wk.target, wk.speed, dt, ROAM_MIN, ROAM_MAX);
+        if (dx) wk.dir = dx > 0 ? 1 : -1;
       }
       m.position.y = wk.rec.baseY + Math.abs(Math.sin(tsec * 4 + wk.phase)) * 0.08;
-      faceCamera(wk.rec, wk.vx, wk.vz);
+      faceCamera(wk.rec, wk.dir);
     }
   }
   function updateFloaters(dt, tsec) {
@@ -743,7 +720,8 @@
       var f = floaters[i];
       if (!(f.talk && tsec < f.talk.talkUntil)) {   // 話しかけられている間はその場に留まる
         if (f.roam) {                               // 鳥：街の上を飛び回る（飛び去らない）
-          stepToward(f, f.mesh, f.speed, dt, BIRD_MIN, BIRD_MAX, false);   // 空なので障害物なし
+          var dx = stepToward(f.mesh, f.target, f.speed, dt, BIRD_MIN, BIRD_MAX);
+          if (dx) f.dir = dx > 0 ? 1 : -1;
         } else {                                    // 飛行機：遠くまで飛び去ってループ
           f.mesh.position.x += f.dir * f.speed * dt;
           if (f.dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
@@ -752,7 +730,7 @@
       }
       f.mesh.position.y = f.y + Math.sin(tsec * 0.7 + f.phase) * (f.plane ? 0.6 : 0.4);
       // 鳥もこちらを向かせる（飛行機は向きを固定したまま＝TRAVEL の文字を鏡にしない）
-      if (f.rec) faceCamera(f.rec, f.vx, f.vz);
+      if (f.rec) faceCamera(f.rec, f.dir);
     }
   }
 
@@ -1223,13 +1201,10 @@
   btnMov.addEventListener("click", toggleMovie);
 
   // ---- 移動・当たり判定・重力 --------------------------------------------
-  // pad は「その点の太さ」。0 だと点が壁の面に触れるまで進めてしまい、
-  // 顔や立ち絵が壁にめり込んで見えるので、人の幅ぶん膨らませて判定する
-  function collides(x, z, pad) {
-    pad = pad || 0;
+  function collides(x, z) {
     for (var i = 0; i < colliders.length; i++) {
       var c = colliders[i];
-      if (x > c.minX - pad && x < c.maxX + pad && z > c.minZ - pad && z < c.maxZ + pad) return true;
+      if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) return true;
     }
     return false;
   }
@@ -1240,7 +1215,7 @@
     if (d > 1) { var s = 1 / Math.sqrt(d); obj.position.x *= s; obj.position.z *= s; }
   }
 
-  var EYE = 1.7, GRAVITY = -26, JUMP_V = 8.6, PLAYER_R = 0.55;
+  var EYE = 1.7, GRAVITY = -26, JUMP_V = 8.6;
   var velY = 0, onGround = true, flyMode = false, bobT = 0;
   var forwardV = new THREE.Vector3(), rightV = new THREE.Vector3();
   var clock = new THREE.Clock();
@@ -1283,10 +1258,9 @@
       rightV.set(-forwardV.z, 0, forwardV.x);
       var dx = (forwardV.x * moveZ + rightV.x * moveX) * speed * analog * dt;
       var dz = (forwardV.z * moveZ + rightV.z * moveX) * speed * analog * dt;
-      // 体の幅（PLAYER_R）ぶん手前で止める＝壁に顔を突っ込まない
       var candX = obj.position.x + dx, candZ = obj.position.z + dz;
-      if (!collides(candX, obj.position.z, PLAYER_R)) obj.position.x = candX;
-      if (!collides(obj.position.x, candZ, PLAYER_R)) obj.position.z = candZ;
+      if (!collides(candX, obj.position.z)) obj.position.x = candX;
+      if (!collides(obj.position.x, candZ)) obj.position.z = candZ;
       clampToGround(obj);
     }
 
