@@ -36,17 +36,17 @@
 
   var camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 900);
 
-  // 空：てっぺんの水色 → 白い紙 → 地平線の桜色のグラデーションドーム。
+  // 空：てっぺんのうすい水色 → 正面（地平線）はほぼ白い紙、のグラデーションドーム。
   // 紙の世界なので、ベタ塗りの色画用紙を重ねたような素直なグラデーションにする
   // （空だけ写実的だと街の紙っぽさが浮くため、彩度は低めに抑える）。
   (function addSky() {
     var c = makeCanvas(8, 256), x = c.getContext("2d");
     var g = x.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0.0, "#6fbfe8");   // 天頂：水色の画用紙
-    g.addColorStop(0.32, "#9ed6f2");
-    g.addColorStop(0.60, "#cfeafa");
-    g.addColorStop(0.82, "#f4fafd");  // 下のほうで白い紙に抜ける
-    g.addColorStop(1.0, "#ffe6ea");   // 地平線：桜色（街となじませる）
+    g.addColorStop(0.0, "#a8d8f0");   // 天頂：うすい水色の画用紙
+    g.addColorStop(0.35, "#c8e6f7");
+    g.addColorStop(0.65, "#e6f3fb");
+    g.addColorStop(0.85, "#f7fcfe");  // 目線の高さ＝ほぼ白い紙
+    g.addColorStop(1.0, "#ffffff");   // 地平線：白（街と地続きに見せる）
     x.fillStyle = g; x.fillRect(0, 0, 8, 256);
     // **toneMapped: false** が要る。ACES トーンマッピングを通すと淡い色が
     // 白に飛んで「空に色が付いていない」ように見える（雲も同じ理由で外す）
@@ -56,7 +56,7 @@
     );
     dome.userData.shadow = "none";
     scene.add(dome);
-    scene.background = new THREE.Color(0x9ed6f2);
+    scene.background = new THREE.Color(0xc8e6f7);
   })();
 
   // ---- 雲（紙を切り抜いたもこもこ） ---------------------------------------
@@ -151,6 +151,12 @@
   // ---- マテリアル / アウトライン（ペーパー調） --------------------------
   function paperMat(color, rough) {
     return new THREE.MeshStandardMaterial({ color: color === undefined ? PAPER : color, roughness: rough === undefined ? 0.95 : rough, metalness: 0 });
+  }
+  // ブランドレッドの面（屋根の帯・銅像の台座トリム・赤カーペット）専用。
+  // **toneMapped: false が要る**。ACES トーンマッピングは明るい面の彩度を落とすので、
+  // 光が当たった #E60013 がサーモンピンクに転ぶ。素直にクランプさせれば赤は赤のまま出る
+  function redMat(rough) {
+    return new THREE.MeshStandardMaterial({ color: SD_RED, roughness: rough, metalness: 0, toneMapped: false });
   }
   function addEdges(mesh, color) {
     var e = new THREE.EdgesGeometry(mesh.geometry, 18);
@@ -267,7 +273,7 @@
     scene.add(mesh);
 
     // 屋根の赤いフチ（薄い板）でアクセント
-    var band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.4, d + 0.1), new THREE.MeshStandardMaterial({ color: SD_RED, roughness: 0.8 }));
+    var band = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.4, d + 0.1), redMat(0.8));
     band.position.set(cx, h + 0.18, cz); band.rotation.y = rotY;
     scene.add(band);
 
@@ -748,7 +754,7 @@
       var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), paperMat(color || 0xfff7f4, 0.7));
       m.position.y = y; addEdges(m, 0x888888); g.add(m);
       // 赤トリム：天面より少し下に巻く（天面と同一平面にせず z-fighting を防ぐ）
-      var t = new THREE.Mesh(new THREE.BoxGeometry(w + 0.12, 0.14, w + 0.12), new THREE.MeshStandardMaterial({ color: SD_RED, roughness: 0.7 }));
+      var t = new THREE.Mesh(new THREE.BoxGeometry(w + 0.12, 0.14, w + 0.12), redMat(0.7));
       t.position.y = y + h / 2 - 0.16; g.add(t);
       return m;
     }
@@ -823,7 +829,7 @@
     g.add(plate);
 
     // 台座前（南）の赤カーペット＝参道
-    var carpet = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 12), new THREE.MeshStandardMaterial({ color: SD_RED, roughness: 0.85 }));
+    var carpet = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 12), redMat(0.85));
     carpet.rotation.x = -Math.PI / 2; carpet.position.set(0, 0.03, -11); carpet.userData.shadow = "receive";
     g.add(carpet);
 
