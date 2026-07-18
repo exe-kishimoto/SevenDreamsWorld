@@ -45,11 +45,11 @@
     // **見えている空はテクスチャの上半分だけ**。球の赤道＝地平線が v=0.5 なので、
     // 0.0＝天頂 / 0.5＝地平線 / それ以降は地面の下で見えない。
     // 下のほうに色を置いても正面の見た目は変わらないので、0〜0.5 に収めること
-    g.addColorStop(0.0, "#a8d8f0");   // 天頂：うすい水色の画用紙
-    g.addColorStop(0.20, "#c3e4f6");
-    g.addColorStop(0.38, "#e4f2fb");
-    g.addColorStop(0.50, "#ffffff");  // 地平線＝正面：白い紙（街と地続きに見せる）
-    g.addColorStop(1.0, "#ffffff");   // ここから下は地面に隠れて見えない
+    g.addColorStop(0.0, "#8ecbe9");   // 天頂：うすい水色の画用紙
+    g.addColorStop(0.18, "#a9d9f1");
+    g.addColorStop(0.36, "#cfe9f8");
+    g.addColorStop(0.50, "#f4fbfe");  // 地平線＝正面：ほぼ白い紙（街と地続きに見せる）
+    g.addColorStop(1.0, "#f4fbfe");   // ここから下は地面に隠れて見えない
     x.fillStyle = g; x.fillRect(0, 0, 8, 256);
     // **toneMapped: false** が要る。ACES トーンマッピングを通すと淡い色が
     // 白に飛んで「空に色が付いていない」ように見える（雲も同じ理由で外す）
@@ -59,7 +59,7 @@
     );
     dome.userData.shadow = "none";
     scene.add(dome);
-    scene.background = new THREE.Color(0xc8e6f7);
+    scene.background = new THREE.Color(0xa9d9f1);
   })();
 
   // ---- 雲（紙を切り抜いたもこもこ） ---------------------------------------
