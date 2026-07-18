@@ -679,7 +679,9 @@
     wk.line = (wk.line + 1) % wk.lines.length;
     wk.talkUntil = clock.elapsedTime + TALK_SEC;
     if (!wk.bubble) {
-      var mat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+      // **toneMapped: false** が要る。吹き出しは白い紙なのに、ACES トーンマッピングを
+      // 通ると白(255)が 232 くらいの薄灰色に落ちて、雲（toneMapped:false）と並ぶと汚れて見える
+      var mat = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
       wk.bubble = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.8), mat);
       wk.bubble.userData.shadow = "none";
       wk.bubble.renderOrder = 5;
