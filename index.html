@@ -285,6 +285,18 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/PointerLockControls.js"></script>
-<script src="app.js?v=11"></script>
+<script>
+  // app.js は毎回ちがう URL で読み込む（＝ブラウザにキャッシュさせない）。
+  // 以前は app.js?v=11 のように手で番号を上げていたが、上げ忘れると
+  // サーバーには新しい中身があるのにブラウザは古いものを実行し続け、
+  // 「直したのに変わっていない」が起きる。ここは自動にしておく。
+  // three.js / PointerLockControls は変わらないので今まで通りキャッシュさせる。
+  (function () {
+    var s = document.createElement("script");
+    s.src = "app.js?v=" + Date.now();
+    s.async = false;                 // 実行順を保つ
+    document.body.appendChild(s);
+  })();
+</script>
 </body>
 </html>

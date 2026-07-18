@@ -8,6 +8,18 @@
   - コミット前に `git status` と `git diff --stat` で変更内容を確認する。
   - 動作確認（最低限 `node --check app.js`）を通してからコミットする。
 
+## 公開（GitHub Pages）
+
+- 公開URL: **https://exe-kishimoto.github.io/SevenDreamsWorld/** （`origin` = exe-kishimoto/SevenDreamsWorld の `main`）
+- **確認先が公開URLなら、コミットだけでなく `git push origin main` まで行うこと**。
+  push しなければ当然なにも変わらない。反映まで1〜2分かかる。
+- **「直したのに変わらない」ときは、まずデプロイ済みファイルの中身を直接見て切り分ける**：
+  `Invoke-WebRequest "https://exe-kishimoto.github.io/SevenDreamsWorld/app.js?nocache=$(Get-Random)"`
+  で目的のコードが入っているか確認する。入っていればブラウザ側のキャッシュの話。
+- `app.js` は `index.html` のローダーが `?v=<時刻>` を付けて読むのでキャッシュされない。
+  **`<script src="app.js?v=11">` のような固定の版番号に戻さないこと**（上げ忘れると、
+  サーバーには新しい中身があるのにブラウザは古いものを実行し続ける事故が起きる）。
+
 ## プロジェクト概要
 
 「Seven Dreams World」— ブランドテーマ **夢と生きる。** の世界を、ブラウザ上の 3D 空間で
