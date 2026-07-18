@@ -661,7 +661,10 @@
     var c = makeCanvas(W, H), x = c.getContext("2d");
     x.clearRect(0, 0, W, H);
     x.lineJoin = "round";
-    bubblePath(x, 14, 14, W - 28, BH, 46, 168);
+    // **しっぽは必ずキャンバスの中央に置くこと**。吹き出しは住人の真上に中央合わせで
+    // 出すので、しっぽを左右にずらすと、そのぶん住人を指さなくなって「ずれている」ように見える。
+    // bubblePath のしっぽの先端は tx + 28 なので、W/2 - 28 を渡すと先端が中央に来る
+    bubblePath(x, 14, 14, W - 28, BH, 46, W / 2 - 28);
     x.fillStyle = "#fff"; x.fill();
     x.strokeStyle = "#222"; x.lineWidth = 7; x.stroke();
     x.textAlign = "center"; x.textBaseline = "middle";
