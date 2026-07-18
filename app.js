@@ -912,7 +912,13 @@
   function makeImageMat(src) {
     var mat = new THREE.MeshBasicMaterial({ map: makeBlankScreenTex(), side: THREE.DoubleSide });
     new THREE.TextureLoader().load(encodeURI(src) + CACHE_BUST,
-      function (t) { t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; mat.map = t; mat.needsUpdate = true; },
+      function (t) {
+        t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; mat.map = t; mat.needsUpdate = true;
+        // 画面をこの画像の縦横比に合わせる（addMonitor が先に作られていない場合は覚えておく）
+        var ar = t.image.height / t.image.width;
+        mat.userData.aspect = ar;
+        if (mat.userData.onAspect) mat.userData.onAspect(ar);
+      },
       undefined,
       function () { mat.map = makePlaceholderTex("静止画", "画像が読み込めません"); mat.needsUpdate = true; });
     return mat;
@@ -956,6 +962,16 @@
     scrB.position.set(0, scrY, -cabD / 2 - 0.01); scrB.rotation.y = Math.PI;
     scrB.userData.shadow = "none"; group.add(scrB);
 
+    // 素材の縦横比に画面を合わせる（画面の枠内に収める＝映像が伸びない）。
+    // 枠と比率が違う素材でも、上下または左右に黒みが残るだけで、絵は歪まない
+    function fitScreen(ar) {
+      var sh = Math.min(h, w * ar), sw = sh / ar;
+      scr.scale.set(sw / w, sh / h, 1);
+      scrB.scale.set(sw / w, sh / h, 1);
+    }
+    screenMat.userData.onAspect = fitScreen;
+    if (screenMat.userData.aspect) fitScreen(screenMat.userData.aspect);
+
     // 台座（床に接する平たい箱。実機のこの土台で自立して見える）
     var base = new THREE.Mesh(
       new THREE.BoxGeometry(cabW + 0.5, BASE_H, BASE_D),
@@ -975,9 +991,9 @@
   // 南の参道の左右に1面ずつ。画面は来場者（南の入口 ≈ (0,-30)）の方へ向ける
   addMonitor(-13, -13, Math.atan2(0 - (-13), -30 - (-13)), 6, 3.4, makeVideoMat("asset/monitor/video/video-1.mp4"));
   addMonitor(13, -13, Math.atan2(0 - 13, -30 - (-13)), 6, 3.4, makeImageMat("asset/monitor/image/image-1.png"));
-  // 縦長スタンド型サイネージ（9:16）。参道の手前・左寄りに立てて、入口を向ける。
+  // 縦長スタンド型サイネージ（9:16）は**奥（銅像の北側）**に立て、広場の中心を向ける。
   // 画面が筐体のほぼ全面を占める実機の形なので、下の余白（lower）はごく小さく
-  addMonitor(-7.5, -20, Math.atan2(0 - (-7.5), -30 - (-20)), 2.7, 4.8,
+  addMonitor(0, 19, Math.atan2(0 - 0, 0 - 19), 2.7, 4.8,
     makeImageMat("asset/monitor/portrait/portrait-1.png"),
     { bezel: 0.2, lower: 0.28, baseH: 0.28, baseD: 1.15 });
 
