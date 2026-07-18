@@ -386,16 +386,22 @@
 
   // 立ち絵は厚みゼロの板なので、向きを固定すると真横に回り込んだとき
   // 板を真横から見ることになって消えてしまう。毎フレームこちらを向かせる（Y軸だけ）。
-  // 左右反転は「進行方向が画面のどちら向きに見えるか」で決める：
-  // 絵は左向き＝画面左へ進むときが素のまま、右へ進んで見えるときだけ鏡にする。
+  //
+  // 左右反転は「**進行方向が画面のどちら向きに見えるか**」で決める。絵は左向きなので、
+  // 画面の左へ進んで見えるときが素のまま、右へ進んで見えるときだけ鏡にする。
+  // これを **進行方向ベクトル(vx,vz) と「画面右」ベクトルの内積**で判定すること。
+  // x 成分だけで判定すると、斜めや奥行き方向に歩くとき／カメラが東西を向いたときに
+  // 判定が逆になり、後ろ歩きに見える。
   var _camRight = new THREE.Vector3();
-  function faceCamera(rec, dirX) {
+  function faceCamera(rec, vx, vz) {
     var m = rec.mesh;
     m.rotation.y = Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z);
     camera.getWorldDirection(_fwd);
-    _camRight.set(-_fwd.z, 0, _fwd.x);                    // 画面右にあたるワールド方向
-    var f = (dirX * _camRight.x > 0) ? -1 : 1;
-    if (f !== rec.flip) rec.setFlip(f);
+    _camRight.set(-_fwd.z, 0, _fwd.x).normalize();        // 画面右にあたるワールド方向
+    var s = vx * _camRight.x + vz * _camRight.z;          // ＋なら画面右へ進んで見える
+    // 手前／奥へ歩いているときは左右がほぼ決まらない。前の向きを保ってちらつかせない
+    if (s > 0.12) { if (rec.flip !== -1) rec.setFlip(-1); }
+    else if (s < -0.12) { if (rec.flip !== 1) rec.setFlip(1); }
   }
 
   // 街のどこか（銅像のまわりのリング内）を1点えらぶ。モニターの前は避ける
@@ -437,7 +443,7 @@
   // 地上を歩く住人を1体登録する。街のどこかに立たせて、最初の行き先を決める
   function pushWalker(rec, speed, name, lines) {
     var wk = makeTalker(rec, name, lines);
-    wk.speed = speed; wk.phase = rand(0, 6.28); wk.dir = 1;
+    wk.speed = speed; wk.phase = rand(0, 6.28); wk.vx = 0; wk.vz = 0;
     var p = roamPoint(ROAM_MIN, ROAM_MAX);
     rec.mesh.position.set(p.x, rec.baseY, p.z);
     wk.target = roamPoint(ROAM_MIN, ROAM_MAX);
@@ -493,7 +499,7 @@
     rec.mesh.position.set(p.x, h, p.z);
     floaters.push({
       mesh: rec.mesh, rec: rec, y: h, speed: rand(1.0, 1.6), phase: rand(0, 6.28),
-      talk: talk, dir: 1, roam: true, target: roamPoint(BIRD_MIN, BIRD_MAX)
+      talk: talk, dir: 1, vx: 0, vz: 0, roam: true, target: roamPoint(BIRD_MIN, BIRD_MAX)
     });
     scene.add(rec.mesh);
   }
@@ -690,29 +696,29 @@
 
   // 行き先へ向かって歩き、着いたら次の行き先を決める。**位置を飛ばさない**ので
   // どこかで消えて別の場所から現れることがない＝ずっと街を歩き回って見える。
-  // 戻り値は進行方向の x 成分（＝立ち絵を鏡にするかの判断に使う）
-  function stepToward(m, target, speed, dt, rMin, rMax) {
-    var dx = target.x - m.position.x, dz = target.z - m.position.z;
+  // 進んだ向きは w.vx / w.vz に入れて返す（立ち絵を鏡にするかの判断に使う）
+  function stepToward(w, m, speed, dt, rMin, rMax) {
+    var t = w.target;
+    var dx = t.x - m.position.x, dz = t.z - m.position.z;
     var d = Math.sqrt(dx * dx + dz * dz);
     if (d < 0.5) {                         // 着いたので次の行き先へ（その場で向きが変わるだけ）
-      var p = roamPoint(rMin, rMax); target.x = p.x; target.z = p.z;
-      return 0;
+      var p = roamPoint(rMin, rMax); t.x = p.x; t.z = p.z;
+      w.vx = 0; w.vz = 0; return;
     }
     var step = Math.min(speed * dt, d);
     m.position.x += (dx / d) * step;
     m.position.z += (dz / d) * step;
-    return dx;
+    w.vx = dx / d; w.vz = dz / d;
   }
 
   function updateWalkers(dt, tsec) {
     for (var i = 0; i < walkers.length; i++) {
       var wk = walkers[i], m = wk.rec.mesh;
       if (tsec >= wk.talkUntil) {          // 話しかけられている間は立ち止まる
-        var dx = stepToward(m, wk.target, wk.speed, dt, ROAM_MIN, ROAM_MAX);
-        if (dx) wk.dir = dx > 0 ? 1 : -1;
+        stepToward(wk, m, wk.speed, dt, ROAM_MIN, ROAM_MAX);
       }
       m.position.y = wk.rec.baseY + Math.abs(Math.sin(tsec * 4 + wk.phase)) * 0.08;
-      faceCamera(wk.rec, wk.dir);
+      faceCamera(wk.rec, wk.vx, wk.vz);
     }
   }
   function updateFloaters(dt, tsec) {
@@ -720,8 +726,7 @@
       var f = floaters[i];
       if (!(f.talk && tsec < f.talk.talkUntil)) {   // 話しかけられている間はその場に留まる
         if (f.roam) {                               // 鳥：街の上を飛び回る（飛び去らない）
-          var dx = stepToward(f.mesh, f.target, f.speed, dt, BIRD_MIN, BIRD_MAX);
-          if (dx) f.dir = dx > 0 ? 1 : -1;
+          stepToward(f, f.mesh, f.speed, dt, BIRD_MIN, BIRD_MAX);
         } else {                                    // 飛行機：遠くまで飛び去ってループ
           f.mesh.position.x += f.dir * f.speed * dt;
           if (f.dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
@@ -730,7 +735,7 @@
       }
       f.mesh.position.y = f.y + Math.sin(tsec * 0.7 + f.phase) * (f.plane ? 0.6 : 0.4);
       // 鳥もこちらを向かせる（飛行機は向きを固定したまま＝TRAVEL の文字を鏡にしない）
-      if (f.rec) faceCamera(f.rec, f.dir);
+      if (f.rec) faceCamera(f.rec, f.vx, f.vz);
     }
   }
 
