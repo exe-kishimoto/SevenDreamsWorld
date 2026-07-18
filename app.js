@@ -42,51 +42,74 @@
   (function addSky() {
     var c = makeCanvas(8, 256), x = c.getContext("2d");
     var g = x.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0.0, "#bcdcf2");   // 天頂：うすい水色の画用紙
-    g.addColorStop(0.42, "#dcf0fa");
-    g.addColorStop(0.72, "#fdf6f4");  // 中ほどで白い紙に抜ける
-    g.addColorStop(1.0, "#ffe0e6");   // 地平線：もとの桜色（街となじませる）
+    g.addColorStop(0.0, "#6fbfe8");   // 天頂：水色の画用紙
+    g.addColorStop(0.32, "#9ed6f2");
+    g.addColorStop(0.60, "#cfeafa");
+    g.addColorStop(0.82, "#f4fafd");  // 下のほうで白い紙に抜ける
+    g.addColorStop(1.0, "#ffe6ea");   // 地平線：桜色（街となじませる）
     x.fillStyle = g; x.fillRect(0, 0, 8, 256);
+    // **toneMapped: false** が要る。ACES トーンマッピングを通すと淡い色が
+    // 白に飛んで「空に色が付いていない」ように見える（雲も同じ理由で外す）
     var dome = new THREE.Mesh(
       new THREE.SphereGeometry(420, 24, 16),
-      new THREE.MeshBasicMaterial({ map: texFromCanvas(c), side: THREE.BackSide, fog: false })
+      new THREE.MeshBasicMaterial({ map: texFromCanvas(c), side: THREE.BackSide, fog: false, toneMapped: false })
     );
     dome.userData.shadow = "none";
     scene.add(dome);
-    scene.background = new THREE.Color(0xdcf0fa);
+    scene.background = new THREE.Color(0x9ed6f2);
   })();
 
   // ---- 雲（紙を切り抜いたもこもこ） ---------------------------------------
-  // 木の樹冠（makeCanopyTex）と同じスカラップ輪郭＝「白い紙＋黒い輪郭線」で、
-  // 下half に薄い影を敷いて紙を2枚重ねたように見せる。ライトの影響を受けない
-  // MeshBasicMaterial にして、どの時間でも紙の白さを保つ。
+  // **輪郭を stroke で描かないこと**。ふくらみを円弧でつないで stroke すると、
+  // 円と円の継ぎ目の線が内側に出て「ぐちゃぐちゃ」になる。
+  // 代わりに「黒い円をひと回り大きく塗る → その上に本体の円を塗る」で、
+  // 重なった輪郭（union）の外側だけが黒く残る＝きれいな1本の輪郭線になる。
+  // 白い紙を少し上へずらして重ね、下に水色の紙をのぞかせて「紙2枚重ね」にする。
   var clouds = [];
   function makeCloudTex() {
-    var W = 512, H = 256, c = makeCanvas(W, H), x = c.getContext("2d");
-    x.clearRect(0, 0, W, H);
-    x.lineJoin = "round"; x.lineCap = "round";
-    x.fillStyle = "#ffffff"; x.strokeStyle = "#222"; x.lineWidth = 7;
-    // 横に平たいスカラップ（樹冠を潰した形＝雲）。輪郭は1本につながる
-    var cx = W / 2, cy = H / 2, RX = 150, RY = 34, br = rand(44, 52), n = 11;
-    x.beginPath();
+    var W = 512, H = 256, LINE = 7, BASE = 200;   // 輪郭の太さ／雲の底辺
+    // BASE は「雲がキャンバスの中央に来る」値。ずらすと板ポリの中で雲が偏る。
+    // ふくらみは底辺に接する円（中心 y = BASE - r）にすると、底が平らな雲になる
+    // **隣り合うふくらみは必ず重ねること**（半径の和 > 間隔）。離れていると
+    // それぞれに輪郭が付いて、下の帯に団子を刺したような形になる
+    var n = 4 + Math.floor(Math.random() * 3), span = 260, x0 = (W - span) / 2, parts = [];
     for (var i = 0; i < n; i++) {
-      var a = i / n * Math.PI * 2 - Math.PI / 2;
-      x.arc(cx + Math.cos(a) * RX, cy + Math.sin(a) * RY, br, a - 1.5, a + 1.5);
+      var t = i / (n - 1);
+      var r = 44 + Math.sin(t * Math.PI) * rand(20, 36);   // 中央がいちばん高い
+      parts.push({ x: x0 + span * t, y: BASE - r, r: r });
     }
-    x.closePath(); x.fill();
-    // 紙の重なりの影（輪郭の内側だけに敷く）
-    x.save(); x.clip();
-    x.fillStyle = "rgba(214,232,244,0.75)";
-    x.fillRect(0, cy + 12, W, H);
-    x.restore();
-    x.stroke();                      // 影を敷いたあとに輪郭を描き直して黒線を残す
+    // ふくらみ＋底の帯をまとめて塗る（帯が円と円のすき間を埋めて1つの塊にする）
+    function blob(ctx, grow, color) {
+      ctx.fillStyle = color;
+      for (var i = 0; i < parts.length; i++) {
+        ctx.beginPath(); ctx.arc(parts[i].x, parts[i].y, parts[i].r + grow, 0, 6.28); ctx.fill();
+      }
+      var a = parts[0], b = parts[parts.length - 1];
+      ctx.fillRect(a.x - grow, BASE - 34, (b.x - a.x) + grow * 2, 34 + grow);
+    }
+    // 本体：白い紙。影は "source-atop" で**シルエットの内側にだけ**乗せる。
+    // （紙をずらして重ねると、ふくらみの継ぎ目に黒い線が残ってしまう）
+    var s = makeCanvas(W, H), sx = s.getContext("2d");
+    blob(sx, 0, "#ffffff");
+    sx.globalCompositeOperation = "source-atop";
+    var g = sx.createLinearGradient(0, BASE - 54, 0, BASE);
+    g.addColorStop(0, "rgba(207,228,242,0)");
+    g.addColorStop(1, "rgba(207,228,242,1)");        // 底ほど濃い水色＝紙の陰
+    sx.fillStyle = g; sx.fillRect(0, BASE - 54, W, 60);
+    sx.globalCompositeOperation = "source-over";
+    // 輪郭：ひと回り大きい黒い塊を下に敷き、その上に本体を重ねる。
+    // こうすると重なった外形の外側だけが黒く残る＝継ぎ目の出ない1本の輪郭線になる
+    var c = makeCanvas(W, H), x = c.getContext("2d");
+    blob(x, LINE, "#222222");
+    x.drawImage(s, 0, 0);
     return texFromCanvas(c);
   }
   (function addClouds() {
     var tex = [makeCloudTex(), makeCloudTex(), makeCloudTex()];   // 3種を使い回す
     for (var i = 0; i < 14; i++) {
       var mat = new THREE.MeshBasicMaterial({
-        map: tex[i % tex.length], transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, fog: false
+        map: tex[i % tex.length], transparent: true, alphaTest: 0.5,
+        side: THREE.DoubleSide, fog: false, toneMapped: false
       });
       var m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
       var w = rand(34, 76);
