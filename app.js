@@ -36,13 +36,16 @@
 
   var camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 900);
 
-  // 空：やわらかいクリーム→桜色のグラデーションドーム
+  // 空：てっぺんの水色 → 白い紙 → 地平線の桜色のグラデーションドーム。
+  // 紙の世界なので、ベタ塗りの色画用紙を重ねたような素直なグラデーションにする
+  // （空だけ写実的だと街の紙っぽさが浮くため、彩度は低めに抑える）。
   (function addSky() {
     var c = makeCanvas(8, 256), x = c.getContext("2d");
     var g = x.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0.0, "#fff7f2");
-    g.addColorStop(0.55, "#ffeef1");
-    g.addColorStop(1.0, "#ffe0e6");
+    g.addColorStop(0.0, "#bcdcf2");   // 天頂：うすい水色の画用紙
+    g.addColorStop(0.42, "#dcf0fa");
+    g.addColorStop(0.72, "#fdf6f4");  // 中ほどで白い紙に抜ける
+    g.addColorStop(1.0, "#ffe0e6");   // 地平線：もとの桜色（街となじませる）
     x.fillStyle = g; x.fillRect(0, 0, 8, 256);
     var dome = new THREE.Mesh(
       new THREE.SphereGeometry(420, 24, 16),
@@ -50,8 +53,64 @@
     );
     dome.userData.shadow = "none";
     scene.add(dome);
-    scene.background = new THREE.Color(0xffeef1);
+    scene.background = new THREE.Color(0xdcf0fa);
   })();
+
+  // ---- 雲（紙を切り抜いたもこもこ） ---------------------------------------
+  // 木の樹冠（makeCanopyTex）と同じスカラップ輪郭＝「白い紙＋黒い輪郭線」で、
+  // 下half に薄い影を敷いて紙を2枚重ねたように見せる。ライトの影響を受けない
+  // MeshBasicMaterial にして、どの時間でも紙の白さを保つ。
+  var clouds = [];
+  function makeCloudTex() {
+    var W = 512, H = 256, c = makeCanvas(W, H), x = c.getContext("2d");
+    x.clearRect(0, 0, W, H);
+    x.lineJoin = "round"; x.lineCap = "round";
+    x.fillStyle = "#ffffff"; x.strokeStyle = "#222"; x.lineWidth = 7;
+    // 横に平たいスカラップ（樹冠を潰した形＝雲）。輪郭は1本につながる
+    var cx = W / 2, cy = H / 2, RX = 150, RY = 34, br = rand(44, 52), n = 11;
+    x.beginPath();
+    for (var i = 0; i < n; i++) {
+      var a = i / n * Math.PI * 2 - Math.PI / 2;
+      x.arc(cx + Math.cos(a) * RX, cy + Math.sin(a) * RY, br, a - 1.5, a + 1.5);
+    }
+    x.closePath(); x.fill();
+    // 紙の重なりの影（輪郭の内側だけに敷く）
+    x.save(); x.clip();
+    x.fillStyle = "rgba(214,232,244,0.75)";
+    x.fillRect(0, cy + 12, W, H);
+    x.restore();
+    x.stroke();                      // 影を敷いたあとに輪郭を描き直して黒線を残す
+    return texFromCanvas(c);
+  }
+  (function addClouds() {
+    var tex = [makeCloudTex(), makeCloudTex(), makeCloudTex()];   // 3種を使い回す
+    for (var i = 0; i < 14; i++) {
+      var mat = new THREE.MeshBasicMaterial({
+        map: tex[i % tex.length], transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, fog: false
+      });
+      var m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+      var w = rand(34, 76);
+      m.scale.set(w, w * 0.5, 1);
+      m.userData.shadow = "none";
+      m.renderOrder = -1;            // 空の一部として、街より先に描く
+      scene.add(m);
+      // 街のまわりをゆっくり周回する＝端でワープしないので消えて湧かない（住人と同じ考え方）
+      clouds.push({
+        mesh: m, r: rand(150, 330), ang: rand(0, Math.PI * 2),
+        spd: rand(0.004, 0.012) * (Math.random() < 0.5 ? -1 : 1),
+        y: rand(46, 118), phase: rand(0, 6.28)
+      });
+    }
+  })();
+  function updateClouds(dt, tsec) {
+    for (var i = 0; i < clouds.length; i++) {
+      var c = clouds[i], m = c.mesh;
+      c.ang += c.spd * dt;
+      m.position.set(Math.cos(c.ang) * c.r, c.y + Math.sin(tsec * 0.12 + c.phase) * 1.5, Math.sin(c.ang) * c.r);
+      // 板ポリなので常にこちらへ向ける（住人と同じ。向きを固定すると真横で消える）
+      m.rotation.y = Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z);
+    }
+  }
 
   // ライト
   scene.add(new THREE.HemisphereLight(0xffffff, 0xffe3e7, 0.95));
@@ -1203,6 +1262,7 @@
 
     var tsec = clock.elapsedTime;
     // 住人の歩行・飛行
+    updateClouds(dt, tsec);
     updateWalkers(dt, tsec);
     updateFloaters(dt, tsec);
     updateBubbles(tsec);
