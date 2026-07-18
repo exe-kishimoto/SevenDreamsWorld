@@ -285,53 +285,22 @@
     function () { scatterTrees(); });
 
   // ---- 住人：マスコット & 人 & 飛行機（ペーパー・スタンディ） -----------
-  // 絵はすべて「左向き」。向きは毎フレーム `faceCamera` でこちらへ向ける（板なので固定すると横から消える）、
-  // 進む向きも一定（左＝ワールド +x）。左端まで行ったら右端へループ＝ゆっくりパレード。
-  // 銅像・モニター・建物を避けるため、広場の前後の帯（レーン）だけを歩く。
+  // 絵はすべて「左向き」。向きは毎フレーム `faceCamera` でこちらへ向ける（板なので固定すると横から消える）。
+  // **住人は街を自由に歩き回る**。行き先をランダムに決めて歩き、着いたら次の行き先を決める
+  // ＝ずっと同じ広場の中にいて、消えることも別の場所に湧くこともない。
   var walkers = [], floaters = [];
   var talkers = [];                      // 話しかけられる住人（地上の walker も空の鳥も入る）
-  var LANE_R = 27;                       // 歩ける半径（建物 r>=31 には届かない）
+  var ROAM_MIN = 11, ROAM_MAX = 26;      // 歩き回る範囲（中心の銅像を避け、建物 r>=31 には届かない）
   var WRAP = 76;                         // 飛行機の折返し x
-  var BIRD_XB = 34;                      // 鳥の折返し x（街の上だけを往復する）
+  var BIRD_MIN = 12, BIRD_MAX = 32;      // 鳥が飛び回る範囲（街の上だけ）
   var FACE = Math.PI;                    // 立ち絵の初期向き（南向き。以降は faceCamera が毎フレーム更新）
+  var MONITORS = [{ x: -13, z: -13 }, { x: 13, z: -13 }];   // 行き先に選ばない場所
 
-  // ---- キャラ（マスコット7体）は World に1体ずつ --------------------------
-  // 7体とも最初につくるが、出しておくのは常に1体だけ。入れ替えは
-  // 「今のキャラが視界の外にいて、話しかけられてもいない」ときだけ行う
-  // ＝目の前でパッと消えることがない。人（住人）はこの制限の対象外。
-  var mascots = [], mascotIdx = 0, mascotSwapAt = 0;
-  var MASCOT_SEC = 24;                   // 入れ替えを試み始めるまでの秒数
-  var _fwd = new THREE.Vector3(), _to = new THREE.Vector3();
-
-  // カメラの前方から外れている（＝画面に映っていないとみなせる）か
-  function outOfView(p) {
-    camera.getWorldDirection(_fwd);
-    _to.subVectors(p, camera.position);
-    if (_to.lengthSq() < 1) return false;
-    return _to.normalize().dot(_fwd) < 0.15;   // 視野より少し広めに見て判定する
-  }
-
-  function registerMascot(rec, talk, place) {
-    rec.mesh.visible = false;
-    mascots.push({ rec: rec, talk: talk, place: place });
-  }
-  function showMascot(i) {
-    var e = mascots[i]; if (!e) return;
-    e.place(); e.rec.mesh.visible = true;
-  }
-  function updateMascots(tsec) {
-    if (mascots.length < 2) return;
-    if (!mascotSwapAt) { mascotSwapAt = tsec + MASCOT_SEC; return; }
-    if (tsec < mascotSwapAt) return;
-    var cur = mascots[mascotIdx];
-    if (tsec < cur.talk.talkUntil) return;              // 話している間は入れ替えない
-    if (!outOfView(cur.rec.mesh.position)) return;      // 見えている間は消さない
-    cur.rec.mesh.visible = false;
-    if (cur.talk.bubble) cur.talk.bubble.visible = false;
-    mascotIdx = (mascotIdx + 1) % mascots.length;
-    showMascot(mascotIdx);
-    mascotSwapAt = tsec + MASCOT_SEC;
-  }
+  // ---- キャラ（マスコット7体） --------------------------------------------
+  // 7体は最初に1体ずつだけつくって、そのまま World に居続ける。
+  // **途中で消したり、別の場所に出し直したりしない**（消えて違うところから
+  // 現れるのは「同じキャラが2体いる」ように見えるため）。人（住人）は同じ絵が重なってもよい。
+  var _fwd = new THREE.Vector3();
 
   // 立ち絵は厚みゼロの板なので、向きを固定すると真横に回り込んだとき
   // 板を真横から見ることになって消えてしまう。毎フレームこちらを向かせる（Y軸だけ）。
@@ -347,11 +316,18 @@
     if (f !== rec.flip) rec.setFlip(f);
   }
 
-  function laneParams() {
-    // z は前(南) [-27,-16] か 後(北) [11,27] の帯。銅像(r<9)・モニター(z≈-13)を避ける
-    var z = (Math.random() < 0.5) ? rand(-27, -16) : rand(11, 27);
-    var xb = Math.sqrt(Math.max(4, LANE_R * LANE_R - z * z));
-    return { z: z, xb: xb };
+  // 街のどこか（銅像のまわりのリング内）を1点えらぶ。モニターの前は避ける
+  function roamPoint(rMin, rMax) {
+    for (var i = 0; i < 24; i++) {
+      var a = rand(0, Math.PI * 2), r = rand(rMin, rMax);
+      var p = { x: Math.cos(a) * r, z: Math.sin(a) * r }, ok = true;
+      for (var j = 0; j < MONITORS.length; j++) {
+        var dx = p.x - MONITORS[j].x, dz = p.z - MONITORS[j].z;
+        if (dx * dx + dz * dz < 25) { ok = false; break; }
+      }
+      if (ok) return p;
+    }
+    return { x: 0, z: rMax };
   }
 
   // 立ち絵プレーン（幅 width、縦横比は後から適用）
@@ -376,19 +352,16 @@
     return t;
   }
 
-  // 地上を歩く住人を1体登録する
-  function pushWalker(rec, lp, speed, name, lines) {
+  // 地上を歩く住人を1体登録する。街のどこかに立たせて、最初の行き先を決める
+  function pushWalker(rec, speed, name, lines) {
     var wk = makeTalker(rec, name, lines);
-    wk.xb = lp.xb; wk.speed = speed; wk.phase = rand(0, 6.28); wk.dir = 1;
+    wk.speed = speed; wk.phase = rand(0, 6.28); wk.dir = 1;
+    var p = roamPoint(ROAM_MIN, ROAM_MAX);
+    rec.mesh.position.set(p.x, rec.baseY, p.z);
+    wk.target = roamPoint(ROAM_MIN, ROAM_MAX);
     walkers.push(wk);
+    scene.add(rec.mesh);
     return wk;
-  }
-
-  // 歩く住人の居場所を決め直す（レーンを取り直して端から端まで歩ける状態にする）
-  function placeWalker(wk, x) {
-    var lp = laneParams();
-    wk.xb = lp.xb; wk.dir = 1; wk.rec.setFlip(1);
-    wk.rec.mesh.position.set(typeof x === "number" ? x : rand(-lp.xb, lp.xb), wk.rec.baseY, lp.z);
   }
 
   function addMascotWalker(file, width, name, lines) {
@@ -397,13 +370,7 @@
       t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
       rec.applyAspect(t.image.height / t.image.width); rec.mat.map = t; rec.mat.needsUpdate = true;
     });
-    var lp = laneParams();
-    rec.mesh.position.set(rand(-lp.xb, lp.xb), rec.baseY, lp.z); scene.add(rec.mesh);
-    var wk = pushWalker(rec, lp, rand(0.7, 1.4), name, lines);
-    registerMascot(rec, wk, function () {
-      // 視界の外に出したいので、何度か引き直して見えない場所を探す
-      for (var i = 0; i < 12; i++) { placeWalker(wk); if (outOfView(rec.mesh.position)) return; }
-    });
+    pushWalker(rec, rand(0.7, 1.4), name, lines);
   }
 
   // 人は asset/people/ の画像だけを使う。読めなければ「出さない」
@@ -412,9 +379,7 @@
     if (!file) return;
     var w = rand(1.5, 1.9);
     var rec = makeWalkerMesh(w, null, null);
-    var lp = laneParams();
-    rec.mesh.position.set(rand(-lp.xb, lp.xb), rec.baseY, lp.z); scene.add(rec.mesh);
-    var wk = pushWalker(rec, lp, rand(0.8, 1.3), name, lines);
+    var wk = pushWalker(rec, rand(0.8, 1.3), name, lines);
     new THREE.TextureLoader().load(file,
       function (t) {
         t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
@@ -441,19 +406,14 @@
     });
     var talk = makeTalker(rec, name, lines);
     // 速いと狙ってタップできない。地上の住人（0.7〜1.4）より少し速い程度に留める
-    // 鳥は街の上を往復する（WRAP まで飛ばすと遠くへ消えてしまう）
-    var f = { mesh: rec.mesh, rec: rec, y: h, speed: rand(1.0, 1.6), phase: rand(0, 6.28), talk: talk, dir: 1, xb: BIRD_XB };
-    floaters.push(f);
-    function place() {
-      for (var i = 0; i < 12; i++) {
-        var z = (Math.random() < 0.5) ? rand(-32, -14) : rand(14, 34);
-        rec.mesh.position.set(rand(-BIRD_XB, BIRD_XB), h, z);
-        f.dir = 1; rec.setFlip(1);
-        if (outOfView(rec.mesh.position)) return;
-      }
-    }
-    place(); scene.add(rec.mesh);
-    registerMascot(rec, talk, place);
+    // 鳥も地上の住人と同じく街の上を飛び回る（遠くへ飛び去らせない）
+    var p = roamPoint(BIRD_MIN, BIRD_MAX);
+    rec.mesh.position.set(p.x, h, p.z);
+    floaters.push({
+      mesh: rec.mesh, rec: rec, y: h, speed: rand(1.0, 1.6), phase: rand(0, 6.28),
+      talk: talk, dir: 1, roam: true, target: roamPoint(BIRD_MIN, BIRD_MAX)
+    });
+    scene.add(rec.mesh);
   }
 
   // 飛行機（kv 上部の旅客機イメージ：横向き＝ノーズ左のシルエット）
@@ -646,16 +606,28 @@
     }
   }
 
-  // レーンの端まで来たら折り返す（端でワープさせると目の前で消えたように見えるため、
-  // 反対の端へ飛ばさず向きだけ変える。絵は左向きなので鏡にして進行方向を向かせる）
+  // 行き先へ向かって歩き、着いたら次の行き先を決める。**位置を飛ばさない**ので
+  // どこかで消えて別の場所から現れることがない＝ずっと街を歩き回って見える。
+  // 戻り値は進行方向の x 成分（＝立ち絵を鏡にするかの判断に使う）
+  function stepToward(m, target, speed, dt, rMin, rMax) {
+    var dx = target.x - m.position.x, dz = target.z - m.position.z;
+    var d = Math.sqrt(dx * dx + dz * dz);
+    if (d < 0.5) {                         // 着いたので次の行き先へ（その場で向きが変わるだけ）
+      var p = roamPoint(rMin, rMax); target.x = p.x; target.z = p.z;
+      return 0;
+    }
+    var step = Math.min(speed * dt, d);
+    m.position.x += (dx / d) * step;
+    m.position.z += (dz / d) * step;
+    return dx;
+  }
+
   function updateWalkers(dt, tsec) {
     for (var i = 0; i < walkers.length; i++) {
       var wk = walkers[i], m = wk.rec.mesh;
-      if (!m.visible) continue;
       if (tsec >= wk.talkUntil) {          // 話しかけられている間は立ち止まる
-        m.position.x += wk.dir * wk.speed * dt;
-        if (wk.dir > 0 && m.position.x > wk.xb) { m.position.x = wk.xb; wk.dir = -1; }
-        else if (wk.dir < 0 && m.position.x < -wk.xb) { m.position.x = -wk.xb; wk.dir = 1; }
+        var dx = stepToward(m, wk.target, wk.speed, dt, ROAM_MIN, ROAM_MAX);
+        if (dx) wk.dir = dx > 0 ? 1 : -1;
       }
       m.position.y = wk.rec.baseY + Math.abs(Math.sin(tsec * 4 + wk.phase)) * 0.08;
       faceCamera(wk.rec, wk.dir);
@@ -664,13 +636,12 @@
   function updateFloaters(dt, tsec) {
     for (var i = 0; i < floaters.length; i++) {
       var f = floaters[i];
-      if (!f.mesh.visible) continue;
       if (!(f.talk && tsec < f.talk.talkUntil)) {   // 話しかけられている間はその場に留まる
-        f.mesh.position.x += f.dir * f.speed * dt;
-        if (f.xb) {                                  // 鳥：端で折り返す（消さない）
-          if (f.dir > 0 && f.mesh.position.x > f.xb) { f.mesh.position.x = f.xb; f.dir = -1; }
-          else if (f.dir < 0 && f.mesh.position.x < -f.xb) { f.mesh.position.x = -f.xb; f.dir = 1; }
-        } else {                                     // 飛行機：遠くまで飛び去ってループ
+        if (f.roam) {                               // 鳥：街の上を飛び回る（飛び去らない）
+          var dx = stepToward(f.mesh, f.target, f.speed, dt, BIRD_MIN, BIRD_MAX);
+          if (dx) f.dir = dx > 0 ? 1 : -1;
+        } else {                                    // 飛行機：遠くまで飛び去ってループ
+          f.mesh.position.x += f.dir * f.speed * dt;
           if (f.dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
           if (f.dir < 0 && f.mesh.position.x < -WRAP) f.mesh.position.x = WRAP;
         }
@@ -902,8 +873,6 @@
   ]);
   // 上空を横切る飛行機は1機だけ（asset/plane/plane.png を使用、無ければ線画）。鳥より高く飛ぶ
   addAirplane(7, 27);
-  // キャラ7体のうち、World に出しておくのは最初の1体だけ（以降は updateMascots が入れ替える）
-  showMascot(0);
 
   // ---- 影の一括設定 -------------------------------------------------------
   scene.traverse(function (o) {
@@ -1095,17 +1064,14 @@
   var talkRay = new THREE.Raycaster();
   talkRay.far = TALK_RANGE;
   var talkNdc = new THREE.Vector2();
-  var _talkMeshes = null, _talkVisible = [];
+  var _talkMeshes = null;
   function talkMeshes() {
     // 住人は初期化時に出そろうので一度だけ組む（毎フレームのレイキャストで使う）
     if (!_talkMeshes) {
       _talkMeshes = [];
       for (var i = 0; i < talkers.length; i++) _talkMeshes.push(talkers[i].rec.mesh);
     }
-    // キャラは1体ずつしか出ていないので、出ていないものは狙えないようにする
-    _talkVisible.length = 0;
-    for (var j = 0; j < _talkMeshes.length; j++) if (_talkMeshes[j].visible) _talkVisible.push(_talkMeshes[j]);
-    return _talkVisible;
+    return _talkMeshes;
   }
   function aimHit(nx, ny) {
     talkNdc.set(nx, ny);
@@ -1237,7 +1203,6 @@
 
     var tsec = clock.elapsedTime;
     // 住人の歩行・飛行
-    updateMascots(tsec);
     updateWalkers(dt, tsec);
     updateFloaters(dt, tsec);
     updateBubbles(tsec);
