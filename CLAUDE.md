@@ -71,7 +71,8 @@ start.bat をダブルクリック
 |---|---|---|
 | **`asset/bgm/`** | **BGM**。ファイル名は `index.html` の `<audio id="bgm">` の `<source src>` で直接指定する | `nanaironotaiyou_vo-2db.mp3` |
 | **`asset/monitor/video/`** | **動画モニター**に映す動画。`video-1.mp4` | `video-1.mp4` |
-| **`asset/monitor/image/`** | **静止画モニター**に映す画像。`image-1.png` | `image-1.png` |
+| **`asset/monitor/image/`** | **横型サイネージ**に映す画像。`image-1.png`（16:9 推奨） | `image-1.png` |
+| **`asset/monitor/portrait/`** | **縦長サイネージ**に映す画像。`portrait-1.png`（**9:16 推奨**、例 1080x1920） | 未配置（無ければ「画像が読み込めません」） |
 | **`asset/plane/`** | **飛行機**の画像（横向き・**ノーズ左**の透明PNG）。`plane.png` | `plane.png`（TRAVEL の文字入り） |
 | **`asset/people/`** | **人物（最大3人）**の画像（横向き・左向き推奨の透明PNG）。`person-1.png`〜`person-3.png` | 未配置（無ければ線画の人） |
 | **`asset/tree/`** | **木**の画像（幹＋樹冠のフルツリー、透明PNG）。`tree.png`（全部の木に共通で使用） | 未配置（無ければ線画の木） |
@@ -172,20 +173,29 @@ Three.js は r128（クラシックなグローバルビルド、CDN読み込み
   文言を変えるときは `addStatueMonument` 内のネームプレート Canvas 描画部分（`npx.fillText(...)`）。
 - 台座の当たり判定は `addCollider(0,0,5.6,5.6)`。
 
-### モニター（`addMonitor` / 動画1・静止画1）
+### サイネージ（`addMonitor` / 横型 動画1・静止画1 ＋ 縦長1）
 
 - 見た目は**屋外デジタルサイネージ（自立型）**：黒い筐体の上寄りに画面、下は無地パネル、
   床置きの台座で自立。画面は表裏の2枚に貼ってあるので裏から見ても映る。
   **文字（銘板・ラベル）は入れない**＝サイネージ本体と中身の映像だけを見せる。
   読み込み中は文字なしの暗い画面（`makeBlankScreenTex`）で、**素材が読めなかったときだけ**
   `makePlaceholderTex` の文字を出して原因が分かるようにしている。`makeVideoMat` は `VideoTexture`、
-  `makeImageMat` は `TextureLoader`。読込前は `makePlaceholderTex` の「準備中」。
-- 参道の左右に1面ずつ配置（正面を来場者側へ向ける）。位置・向きは `addMonitor(...)` 呼び出しで調整。
+  `makeImageMat` は `TextureLoader`。
+- **縦長スタンド型**は同じ `addMonitor` に第7引数 `opt` を渡して作る
+  （`{bezel, lower, baseH, baseD}`）。実機は画面が筐体のほぼ全面（≈88%）なので
+  `lower` をごく小さくする。画面は 9:16（`2.7 x 4.8`）。
+- 横型2面は参道の左右、縦長1面は参道の手前・左寄り。いずれも正面を来場者側
+  （南の入口 ≈ (0,-30)）へ向ける。位置・向き・大きさは `addMonitor(...)` 呼び出しで調整。
 
 ### 当たり判定・操作
 
-- 当たり判定は `colliders` の AABB リスト（`addCollider` で登録）。構造物を足したらここにも追加。
+- 当たり判定は `colliders` の AABB リスト（`addCollider` で登録）。**構造物を足したらここにも必ず追加**
+  （登録し忘れた物体は人もキャラもすり抜ける。木も1本ずつ登録している）。
   移動は楕円ステージ内に `clampToGround` でクランプ。
+- **住人も `colliders` を見る**：`roamPoint` は物体の中を行き先にせず、`stepToward` はぶつかる一歩を
+  踏み出さずに行き先を選び直す（すでに中にいる場合は出られるよう通す）。
+  `collides(x, z, pad)` の `pad` は「その点の太さ」＝体の幅。住人は 0.7 で見ている。
+  ※**浮遊モード（F）だけは当たり判定なし**＝空を自由に飛ぶための仕様。
 - WASD移動 / Shift走る / Space ジャンプ / ホイール=FOVズーム / **F**=浮遊モード
   （重力なし・Space上昇/Shift下降/Ctrl加速）/ **B**=BGM / **M**=動画音 / ESC=ロック解除。
 - スマホ：**スマホゲームの標準配置に合わせる＝左下スティックで移動・右下ボタンでアクション**。

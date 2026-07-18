@@ -359,6 +359,9 @@
     }
     g.position.set(x, 0, z);
     scene.add(g);
+    // 幹のぶんだけ当たり判定を置く（無いと人もキャラも木を通り抜ける）。
+    // 板ポリの見た目より細くして、絵の端をかすめる程度なら通れるようにする
+    addCollider(x, z, 0.45 * s, 0.45 * s, 0.1);
   }
   // 建物の間や外周に木を散らす（銅像・モニターも避けるため読み込み後に実行）
   function scatterTrees() {
@@ -419,7 +422,8 @@
     else if (s < -0.12) { if (rec.flip !== 1) rec.setFlip(1); }
   }
 
-  // 街のどこか（銅像のまわりのリング内）を1点えらぶ。モニターの前は避ける
+  // 街のどこか（銅像のまわりのリング内）を1点えらぶ。
+  // 建物・木・サイネージの中（colliders）は行き先にしない＝住人が物体に刺さらない
   function roamPoint(rMin, rMax) {
     for (var i = 0; i < 24; i++) {
       var a = rand(0, Math.PI * 2), r = rand(rMin, rMax);
@@ -428,6 +432,7 @@
         var dx = p.x - MONITORS[j].x, dz = p.z - MONITORS[j].z;
         if (dx * dx + dz * dz < 25) { ok = false; break; }
       }
+      if (ok && collides(p.x, p.z, 1.2)) ok = false;
       if (ok) return p;
     }
     return { x: 0, z: rMax };
@@ -713,8 +718,9 @@
 
   // 行き先へ向かって歩き、着いたら次の行き先を決める。**位置を飛ばさない**ので
   // どこかで消えて別の場所から現れることがない＝ずっと街を歩き回って見える。
-  // 進んだ向きは w.vx / w.vz に入れて返す（立ち絵を鏡にするかの判断に使う）
-  function stepToward(w, m, speed, dt, rMin, rMax) {
+  // 進んだ向きは w.vx / w.vz に入れて返す（立ち絵を鏡にするかの判断に使う）。
+  // solid を渡すと、建物・木・サイネージにぶつかる一歩は踏み出さず行き先を選び直す
+  function stepToward(w, m, speed, dt, rMin, rMax, solid) {
     var t = w.target;
     var dx = t.x - m.position.x, dz = t.z - m.position.z;
     var d = Math.sqrt(dx * dx + dz * dz);
@@ -723,8 +729,13 @@
       w.vx = 0; w.vz = 0; return;
     }
     var step = Math.min(speed * dt, d);
-    m.position.x += (dx / d) * step;
-    m.position.z += (dz / d) * step;
+    var nx = m.position.x + (dx / d) * step, nz = m.position.z + (dz / d) * step;
+    // すでに何かの中にいる場合まで止めると出られなくなるので、そのときは通す
+    if (solid && collides(nx, nz, 0.7) && !collides(m.position.x, m.position.z, 0.7)) {
+      var q = roamPoint(rMin, rMax); t.x = q.x; t.z = q.z;
+      w.vx = 0; w.vz = 0; return;
+    }
+    m.position.x = nx; m.position.z = nz;
     w.vx = dx / d; w.vz = dz / d;
   }
 
@@ -732,7 +743,7 @@
     for (var i = 0; i < walkers.length; i++) {
       var wk = walkers[i], m = wk.rec.mesh;
       if (tsec >= wk.talkUntil) {          // 話しかけられている間は立ち止まる
-        stepToward(wk, m, wk.speed, dt, ROAM_MIN, ROAM_MAX);
+        stepToward(wk, m, wk.speed, dt, ROAM_MIN, ROAM_MAX, true);
       }
       m.position.y = wk.rec.baseY + Math.abs(Math.sin(tsec * 4 + wk.phase)) * 0.08;
       faceCamera(wk.rec, wk.vx, wk.vz);
@@ -911,13 +922,17 @@
   }
   // 屋外デジタルサイネージ（自立型）。脚2本ではなく、
   // 「黒い筐体（上に画面・下は無地パネル）＋床置きの台座」という実物の形にする
-  function addMonitor(x, z, rotY, w, h, screenMat) {
+  // opt: { bezel, lower, baseH, baseD }。縦長スタンド型は画面が筐体のほぼ全面を占め、
+  // 下の余白がほとんど無いので、opt で lower を小さくして使う
+  function addMonitor(x, z, rotY, w, h, screenMat, opt) {
+    opt = opt || {};
     var group = new THREE.Group();
-    var BEZEL = 0.34;                       // 画面まわりの黒フチ
-    // 画面の下の無地パネル（実機のこの余白が特徴）。大きくすると画面が高くなって
+    var BEZEL = opt.bezel === undefined ? 0.34 : opt.bezel;   // 画面まわりの黒フチ
+    // 画面の下の無地パネル（横型の実機のこの余白が特徴）。大きくすると画面が高くなって
     // 見上げる形になるので、今までの画面の高さから大きく変えない値にしてある
-    var LOWER = h * 0.55;
-    var BASE_H = 0.34, BASE_D = 1.5;        // 台座の高さ・奥行き
+    var LOWER = opt.lower === undefined ? h * 0.55 : opt.lower;
+    var BASE_H = opt.baseH === undefined ? 0.34 : opt.baseH;
+    var BASE_D = opt.baseD === undefined ? 1.5 : opt.baseD;   // 台座の高さ・奥行き
     var cabW = w + BEZEL * 2;
     var cabH = h + BEZEL * 2 + LOWER;
     var cabD = 0.45;
@@ -957,6 +972,11 @@
   // 南の参道の左右に1面ずつ。画面は来場者（南の入口 ≈ (0,-30)）の方へ向ける
   addMonitor(-13, -13, Math.atan2(0 - (-13), -30 - (-13)), 6, 3.4, makeVideoMat("asset/monitor/video/video-1.mp4"));
   addMonitor(13, -13, Math.atan2(0 - 13, -30 - (-13)), 6, 3.4, makeImageMat("asset/monitor/image/image-1.png"));
+  // 縦長スタンド型サイネージ（9:16）。参道の手前・左寄りに立てて、入口を向ける。
+  // 画面が筐体のほぼ全面を占める実機の形なので、下の余白（lower）はごく小さく
+  addMonitor(-7.5, -20, Math.atan2(0 - (-7.5), -30 - (-20)), 2.7, 4.8,
+    makeImageMat("asset/monitor/portrait/portrait-1.png"),
+    { bezel: 0.2, lower: 0.28, baseH: 0.28, baseD: 1.15 });
 
   // ---- 住人を配置（左向きにゆっくり歩き回る＝パレード） ------------------
   // マスコット（ph-music-01.png の6体が地上を散策）
@@ -1258,10 +1278,13 @@
   btnMov.addEventListener("click", toggleMovie);
 
   // ---- 移動・当たり判定・重力 --------------------------------------------
-  function collides(x, z) {
+  // pad は「その点の太さ」。0 だと壁の面に達するまで進めてしまうので、
+  // 体の幅ぶん膨らませて判定する（住人は 0.7 を渡している）
+  function collides(x, z, pad) {
+    pad = pad || 0;
     for (var i = 0; i < colliders.length; i++) {
       var c = colliders[i];
-      if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) return true;
+      if (x > c.minX - pad && x < c.maxX + pad && z > c.minZ - pad && z < c.maxZ + pad) return true;
     }
     return false;
   }
