@@ -42,11 +42,14 @@
   (function addSky() {
     var c = makeCanvas(8, 256), x = c.getContext("2d");
     var g = x.createLinearGradient(0, 0, 0, 256);
+    // **見えている空はテクスチャの上半分だけ**。球の赤道＝地平線が v=0.5 なので、
+    // 0.0＝天頂 / 0.5＝地平線 / それ以降は地面の下で見えない。
+    // 下のほうに色を置いても正面の見た目は変わらないので、0〜0.5 に収めること
     g.addColorStop(0.0, "#a8d8f0");   // 天頂：うすい水色の画用紙
-    g.addColorStop(0.35, "#c8e6f7");
-    g.addColorStop(0.65, "#e6f3fb");
-    g.addColorStop(0.85, "#f7fcfe");  // 目線の高さ＝ほぼ白い紙
-    g.addColorStop(1.0, "#ffffff");   // 地平線：白（街と地続きに見せる）
+    g.addColorStop(0.20, "#c3e4f6");
+    g.addColorStop(0.38, "#e4f2fb");
+    g.addColorStop(0.50, "#ffffff");  // 地平線＝正面：白い紙（街と地続きに見せる）
+    g.addColorStop(1.0, "#ffffff");   // ここから下は地面に隠れて見えない
     x.fillStyle = g; x.fillRect(0, 0, 8, 256);
     // **toneMapped: false** が要る。ACES トーンマッピングを通すと淡い色が
     // 白に飛んで「空に色が付いていない」ように見える（雲も同じ理由で外す）
@@ -153,10 +156,16 @@
     return new THREE.MeshStandardMaterial({ color: color === undefined ? PAPER : color, roughness: rough === undefined ? 0.95 : rough, metalness: 0 });
   }
   // ブランドレッドの面（屋根の帯・銅像の台座トリム・赤カーペット）専用。
-  // **toneMapped: false が要る**。ACES トーンマッピングは明るい面の彩度を落とすので、
-  // 光が当たった #E60013 がサーモンピンクに転ぶ。素直にクランプさせれば赤は赤のまま出る
+  // **色は必ず convertSRGBToLinear() を通すこと**。`renderer.outputEncoding = sRGBEncoding`
+  // の下ではマテリアルの色はリニア値として扱われるので、sRGB のコード値 #E60013 をそのまま
+  // 渡すと、出力時にもう一度 sRGB 変換されて暗い青チャンネル(0x13)が 0.07→0.30 に持ち上がり、
+  // マゼンタ寄りのピンクになる。**これがピンクの正体**（トーンマッピングだけの話ではない）。
+  // toneMapped: false は、明るい面で ACES に彩度を落とされてサーモンに転ぶのを防ぐため。
   function redMat(rough) {
-    return new THREE.MeshStandardMaterial({ color: SD_RED, roughness: rough, metalness: 0, toneMapped: false });
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(SD_RED).convertSRGBToLinear(),
+      roughness: rough, metalness: 0, toneMapped: false
+    });
   }
   function addEdges(mesh, color) {
     var e = new THREE.EdgesGeometry(mesh.geometry, 18);
