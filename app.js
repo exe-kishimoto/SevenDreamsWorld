@@ -291,8 +291,47 @@
   var walkers = [], floaters = [];
   var talkers = [];                      // 話しかけられる住人（地上の walker も空の鳥も入る）
   var LANE_R = 27;                       // 歩ける半径（建物 r>=31 には届かない）
-  var WRAP = 76;                         // 空の飛行体の折返し x
+  var WRAP = 76;                         // 飛行機の折返し x
+  var BIRD_XB = 34;                      // 鳥の折返し x（街の上だけを往復する）
   var FACE = Math.PI;                    // 立ち絵の固定向き（南向き＝正面が見える）
+
+  // ---- キャラ（マスコット7体）は World に1体ずつ --------------------------
+  // 7体とも最初につくるが、出しておくのは常に1体だけ。入れ替えは
+  // 「今のキャラが視界の外にいて、話しかけられてもいない」ときだけ行う
+  // ＝目の前でパッと消えることがない。人（住人）はこの制限の対象外。
+  var mascots = [], mascotIdx = 0, mascotSwapAt = 0;
+  var MASCOT_SEC = 24;                   // 入れ替えを試み始めるまでの秒数
+  var _fwd = new THREE.Vector3(), _to = new THREE.Vector3();
+
+  // カメラの前方から外れている（＝画面に映っていないとみなせる）か
+  function outOfView(p) {
+    camera.getWorldDirection(_fwd);
+    _to.subVectors(p, camera.position);
+    if (_to.lengthSq() < 1) return false;
+    return _to.normalize().dot(_fwd) < 0.15;   // 視野より少し広めに見て判定する
+  }
+
+  function registerMascot(rec, talk, place) {
+    rec.mesh.visible = false;
+    mascots.push({ rec: rec, talk: talk, place: place });
+  }
+  function showMascot(i) {
+    var e = mascots[i]; if (!e) return;
+    e.place(); e.rec.mesh.visible = true;
+  }
+  function updateMascots(tsec) {
+    if (mascots.length < 2) return;
+    if (!mascotSwapAt) { mascotSwapAt = tsec + MASCOT_SEC; return; }
+    if (tsec < mascotSwapAt) return;
+    var cur = mascots[mascotIdx];
+    if (tsec < cur.talk.talkUntil) return;              // 話している間は入れ替えない
+    if (!outOfView(cur.rec.mesh.position)) return;      // 見えている間は消さない
+    cur.rec.mesh.visible = false;
+    if (cur.talk.bubble) cur.talk.bubble.visible = false;
+    mascotIdx = (mascotIdx + 1) % mascots.length;
+    showMascot(mascotIdx);
+    mascotSwapAt = tsec + MASCOT_SEC;
+  }
 
   function laneParams() {
     // z は前(南) [-27,-16] か 後(北) [11,27] の帯。銅像(r<9)・モニター(z≈-13)を避ける
@@ -307,8 +346,10 @@
     var mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
     mesh.scale.set(width, width, 1); mesh.userData.shadow = "none";
     mesh.rotation.y = FACE;
-    var rec = { mesh: mesh, mat: mat, width: width, baseY: width * 0.5 + 0.02 };
-    rec.applyAspect = function (ar) { mesh.scale.set(width, width * ar, 1); rec.baseY = width * ar * 0.5 + 0.02; mesh.position.y = rec.baseY; };
+    var rec = { mesh: mesh, mat: mat, width: width, baseY: width * 0.5 + 0.02, ar: 1, flip: 1 };
+    // 折返しで左右を反転させる（絵は左向き固定なので、右へ歩くときは鏡にして進行方向を向かせる）
+    rec.setFlip = function (f) { rec.flip = f; mesh.scale.x = width * f; };
+    rec.applyAspect = function (ar) { rec.ar = ar; mesh.scale.set(width * rec.flip, width * ar, 1); rec.baseY = width * ar * 0.5 + 0.02; mesh.position.y = rec.baseY; };
     if (aspect) { rec.applyAspect(aspect); if (tex) { mat.map = tex; mat.needsUpdate = true; } }
     return rec;
   }
@@ -324,9 +365,16 @@
   // 地上を歩く住人を1体登録する
   function pushWalker(rec, lp, speed, name, lines) {
     var wk = makeTalker(rec, name, lines);
-    wk.xb = lp.xb; wk.speed = speed; wk.phase = rand(0, 6.28);
+    wk.xb = lp.xb; wk.speed = speed; wk.phase = rand(0, 6.28); wk.dir = 1;
     walkers.push(wk);
     return wk;
+  }
+
+  // 歩く住人の居場所を決め直す（レーンを取り直して端から端まで歩ける状態にする）
+  function placeWalker(wk, x) {
+    var lp = laneParams();
+    wk.xb = lp.xb; wk.dir = 1; wk.rec.setFlip(1);
+    wk.rec.mesh.position.set(typeof x === "number" ? x : rand(-lp.xb, lp.xb), wk.rec.baseY, lp.z);
   }
 
   function addMascotWalker(file, width, name, lines) {
@@ -337,66 +385,37 @@
     });
     var lp = laneParams();
     rec.mesh.position.set(rand(-lp.xb, lp.xb), rec.baseY, lp.z); scene.add(rec.mesh);
-    pushWalker(rec, lp, rand(0.7, 1.4), name, lines);
+    var wk = pushWalker(rec, lp, rand(0.7, 1.4), name, lines);
+    registerMascot(rec, wk, function () {
+      // 視界の外に出したいので、何度か引き直して見えない場所を探す
+      for (var i = 0; i < 12; i++) { placeWalker(wk); if (outOfView(rec.mesh.position)) return; }
+    });
   }
 
-  // 線画の人（kv 準拠：細身でエレガントな横向き＝左向きシルエット）
-  function makePersonTex() {
-    var c = makeCanvas(200, 360), x = c.getContext("2d");
-    x.clearRect(0, 0, 200, 360);
-    x.lineJoin = "round"; x.lineCap = "round";
-    var ink = "#222", paper = "#fff", lw = 5;
-    var dress = Math.random() < 0.4;
-    var stride = rand(10, 20);
-    x.strokeStyle = ink; x.fillStyle = paper; x.lineWidth = lw;
-    // 脚（左向きの歩行：前足＝左が前へ）
-    x.beginPath(); x.moveTo(94, 250); x.quadraticCurveTo(84, 300, 74 - stride, 350); x.stroke();
-    x.beginPath(); x.moveTo(104, 250); x.quadraticCurveTo(112, 302, 118, 350); x.stroke();
-    x.beginPath(); x.moveTo(74 - stride, 350); x.lineTo(60 - stride, 353); x.stroke(); // 前足つま先（左）
-    x.beginPath(); x.moveTo(118, 350); x.lineTo(106, 355); x.stroke();
-    // 胴（左向き：前＝左側にふくらみ）
-    x.beginPath();
-    if (dress) {
-      x.moveTo(80, 96); x.quadraticCurveTo(64, 190, 66, 252);
-      x.lineTo(126, 252); x.quadraticCurveTo(120, 150, 110, 96);
-    } else {
-      x.moveTo(80, 96); x.quadraticCurveTo(72, 180, 76, 250);
-      x.lineTo(118, 250); x.quadraticCurveTo(114, 150, 110, 96);
-    }
-    x.closePath(); x.fill(); x.stroke();
-    // 前腕（手前で振る）
-    x.beginPath(); x.moveTo(84, 106); x.quadraticCurveTo(70, 150, 78, 190); x.stroke();
-    // 首
-    x.beginPath(); x.moveTo(92, 96); x.lineTo(92, 78); x.stroke();
-    // 赤いスカーフ（SevenDreams カラー）
-    x.strokeStyle = SD_RED_CSS; x.lineWidth = 7;
-    x.beginPath(); x.moveTo(80, 92); x.lineTo(106, 92); x.stroke();
-    x.beginPath(); x.moveTo(100, 92); x.lineTo(110, 120); x.stroke();
-    // 頭（左向き）
-    x.strokeStyle = ink; x.fillStyle = paper; x.lineWidth = lw;
-    x.beginPath(); x.ellipse(90, 52, 21, 24, 0, 0, Math.PI * 2); x.fill(); x.stroke();
-    // 髪（後頭部＝右側）
-    x.fillStyle = ink;
-    x.beginPath(); x.arc(93, 46, 22, Math.PI * 1.15, Math.PI * 2.15); x.fill();
-    var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; return t;
-  }
-  // file を渡すと asset/people/ の画像を使い、無ければ線画にフォールバック
+  // 人は asset/people/ の画像だけを使う。読めなければ「出さない」
+  //（線画の人＝赤いスカーフのシルエットは廃止。素材の人物以外を街に出さないため）
   function addPersonWalker(file, name, lines) {
+    if (!file) return;
     var w = rand(1.5, 1.9);
     var rec = makeWalkerMesh(w, null, null);
     var lp = laneParams();
     rec.mesh.position.set(rand(-lp.xb, lp.xb), rec.baseY, lp.z); scene.add(rec.mesh);
-    pushWalker(rec, lp, rand(0.8, 1.3), name, lines);
-    function apply(tex) { rec.applyAspect(tex.image.height / tex.image.width); rec.mat.map = tex; rec.mat.needsUpdate = true; }
-    if (file) {
-      var fallback = makePersonTex();
-      new THREE.TextureLoader().load(file,
-        function (t) { t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; apply(t); },
-        undefined,
-        function () { apply(fallback); });
-    } else {
-      apply(makePersonTex());
-    }
+    var wk = pushWalker(rec, lp, rand(0.8, 1.3), name, lines);
+    new THREE.TextureLoader().load(file,
+      function (t) {
+        t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+        rec.applyAspect(t.image.height / t.image.width); rec.mat.map = t; rec.mat.needsUpdate = true;
+      },
+      undefined,
+      function () { dropWalker(wk); });
+  }
+
+  // 素材が無かった住人を街から消す（歩行・話しかけ対象からも外す）
+  function dropWalker(wk) {
+    scene.remove(wk.rec.mesh);
+    var i = walkers.indexOf(wk); if (i >= 0) walkers.splice(i, 1);
+    i = talkers.indexOf(wk); if (i >= 0) talkers.splice(i, 1);
+    _talkMeshes = null;
   }
 
   // 空を横切る鳥（air）。地上の住人と同じく name/lines を渡せば話しかけられる
@@ -406,11 +425,21 @@
       t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
       rec.applyAspect(t.image.height / t.image.width); rec.mat.map = t; rec.mat.needsUpdate = true;
     });
-    var z = (Math.random() < 0.5) ? rand(-32, -14) : rand(14, 34);
-    rec.mesh.position.set(rand(-WRAP, WRAP), h, z); scene.add(rec.mesh);
     var talk = makeTalker(rec, name, lines);
     // 速いと狙ってタップできない。地上の住人（0.7〜1.4）より少し速い程度に留める
-    floaters.push({ mesh: rec.mesh, y: h, speed: rand(1.0, 1.6), phase: rand(0, 6.28), talk: talk });
+    // 鳥は街の上を往復する（WRAP まで飛ばすと遠くへ消えてしまう）
+    var f = { mesh: rec.mesh, rec: rec, y: h, speed: rand(1.0, 1.6), phase: rand(0, 6.28), talk: talk, dir: 1, xb: BIRD_XB };
+    floaters.push(f);
+    function place() {
+      for (var i = 0; i < 12; i++) {
+        var z = (Math.random() < 0.5) ? rand(-32, -14) : rand(14, 34);
+        rec.mesh.position.set(rand(-BIRD_XB, BIRD_XB), h, z);
+        f.dir = 1; rec.setFlip(1);
+        if (outOfView(rec.mesh.position)) return;
+      }
+    }
+    place(); scene.add(rec.mesh);
+    registerMascot(rec, talk, place);
   }
 
   // 飛行機（kv 上部の旅客機イメージ：横向き＝ノーズ左のシルエット）
@@ -603,24 +632,33 @@
     }
   }
 
-  // 左（+x）へゆっくり進み、右端(-xb)へループ。向きは固定。
+  // レーンの端まで来たら折り返す（端でワープさせると目の前で消えたように見えるため、
+  // 反対の端へ飛ばさず向きだけ変える。絵は左向きなので鏡にして進行方向を向かせる）
   function updateWalkers(dt, tsec) {
     for (var i = 0; i < walkers.length; i++) {
       var wk = walkers[i], m = wk.rec.mesh;
+      if (!m.visible) continue;
       if (tsec >= wk.talkUntil) {          // 話しかけられている間は立ち止まる
-        m.position.x += wk.speed * dt;
-        if (m.position.x > wk.xb) m.position.x = -wk.xb;
+        m.position.x += wk.dir * wk.speed * dt;
+        if (wk.dir > 0 && m.position.x > wk.xb) { m.position.x = wk.xb; wk.dir = -1; wk.rec.setFlip(-1); }
+        else if (wk.dir < 0 && m.position.x < -wk.xb) { m.position.x = -wk.xb; wk.dir = 1; wk.rec.setFlip(1); }
       }
       m.position.y = wk.rec.baseY + Math.abs(Math.sin(tsec * 4 + wk.phase)) * 0.08;
     }
   }
   function updateFloaters(dt, tsec) {
     for (var i = 0; i < floaters.length; i++) {
-      var f = floaters[i], dir = f.dir || 1;
+      var f = floaters[i];
+      if (!f.mesh.visible) continue;
       if (!(f.talk && tsec < f.talk.talkUntil)) {   // 話しかけられている間はその場に留まる
-        f.mesh.position.x += dir * f.speed * dt;
-        if (dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
-        if (dir < 0 && f.mesh.position.x < -WRAP) f.mesh.position.x = WRAP;
+        f.mesh.position.x += f.dir * f.speed * dt;
+        if (f.xb) {                                  // 鳥：端で折り返す（消さない）
+          if (f.dir > 0 && f.mesh.position.x > f.xb) { f.mesh.position.x = f.xb; f.dir = -1; if (f.rec) f.rec.setFlip(-1); }
+          else if (f.dir < 0 && f.mesh.position.x < -f.xb) { f.mesh.position.x = -f.xb; f.dir = 1; if (f.rec) f.rec.setFlip(1); }
+        } else {                                     // 飛行機：遠くまで飛び去ってループ
+          if (f.dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
+          if (f.dir < 0 && f.mesh.position.x < -WRAP) f.mesh.position.x = WRAP;
+        }
       }
       f.mesh.position.y = f.y + Math.sin(tsec * 0.7 + f.phase) * (f.plane ? 0.6 : 0.4);
     }
@@ -847,6 +885,8 @@
   ]);
   // 上空を横切る飛行機は1機だけ（asset/plane/plane.png を使用、無ければ線画）。鳥より高く飛ぶ
   addAirplane(7, 27);
+  // キャラ7体のうち、World に出しておくのは最初の1体だけ（以降は updateMascots が入れ替える）
+  showMascot(0);
 
   // ---- 影の一括設定 -------------------------------------------------------
   scene.traverse(function (o) {
@@ -1038,14 +1078,17 @@
   var talkRay = new THREE.Raycaster();
   talkRay.far = TALK_RANGE;
   var talkNdc = new THREE.Vector2();
-  var _talkMeshes = null;
+  var _talkMeshes = null, _talkVisible = [];
   function talkMeshes() {
     // 住人は初期化時に出そろうので一度だけ組む（毎フレームのレイキャストで使う）
     if (!_talkMeshes) {
       _talkMeshes = [];
       for (var i = 0; i < talkers.length; i++) _talkMeshes.push(talkers[i].rec.mesh);
     }
-    return _talkMeshes;
+    // キャラは1体ずつしか出ていないので、出ていないものは狙えないようにする
+    _talkVisible.length = 0;
+    for (var j = 0; j < _talkMeshes.length; j++) if (_talkMeshes[j].visible) _talkVisible.push(_talkMeshes[j]);
+    return _talkVisible;
   }
   function aimHit(nx, ny) {
     talkNdc.set(nx, ny);
@@ -1177,6 +1220,7 @@
 
     var tsec = clock.elapsedTime;
     // 住人の歩行・飛行
+    updateMascots(tsec);
     updateWalkers(dt, tsec);
     updateFloaters(dt, tsec);
     updateBubbles(tsec);
