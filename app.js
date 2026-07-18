@@ -285,7 +285,7 @@
     function () { scatterTrees(); });
 
   // ---- 住人：マスコット & 人 & 飛行機（ペーパー・スタンディ） -----------
-  // 絵はすべて「左向き」。向きは固定（rotation.y = π で南＝来場者側へ正面）、
+  // 絵はすべて「左向き」。向きは毎フレーム `faceCamera` でこちらへ向ける（板なので固定すると横から消える）、
   // 進む向きも一定（左＝ワールド +x）。左端まで行ったら右端へループ＝ゆっくりパレード。
   // 銅像・モニター・建物を避けるため、広場の前後の帯（レーン）だけを歩く。
   var walkers = [], floaters = [];
@@ -293,7 +293,7 @@
   var LANE_R = 27;                       // 歩ける半径（建物 r>=31 には届かない）
   var WRAP = 76;                         // 飛行機の折返し x
   var BIRD_XB = 34;                      // 鳥の折返し x（街の上だけを往復する）
-  var FACE = Math.PI;                    // 立ち絵の固定向き（南向き＝正面が見える）
+  var FACE = Math.PI;                    // 立ち絵の初期向き（南向き。以降は faceCamera が毎フレーム更新）
 
   // ---- キャラ（マスコット7体）は World に1体ずつ --------------------------
   // 7体とも最初につくるが、出しておくのは常に1体だけ。入れ替えは
@@ -331,6 +331,20 @@
     mascotIdx = (mascotIdx + 1) % mascots.length;
     showMascot(mascotIdx);
     mascotSwapAt = tsec + MASCOT_SEC;
+  }
+
+  // 立ち絵は厚みゼロの板なので、向きを固定すると真横に回り込んだとき
+  // 板を真横から見ることになって消えてしまう。毎フレームこちらを向かせる（Y軸だけ）。
+  // 左右反転は「進行方向が画面のどちら向きに見えるか」で決める：
+  // 絵は左向き＝画面左へ進むときが素のまま、右へ進んで見えるときだけ鏡にする。
+  var _camRight = new THREE.Vector3();
+  function faceCamera(rec, dirX) {
+    var m = rec.mesh;
+    m.rotation.y = Math.atan2(camera.position.x - m.position.x, camera.position.z - m.position.z);
+    camera.getWorldDirection(_fwd);
+    _camRight.set(-_fwd.z, 0, _fwd.x);                    // 画面右にあたるワールド方向
+    var f = (dirX * _camRight.x > 0) ? -1 : 1;
+    if (f !== rec.flip) rec.setFlip(f);
   }
 
   function laneParams() {
@@ -640,10 +654,11 @@
       if (!m.visible) continue;
       if (tsec >= wk.talkUntil) {          // 話しかけられている間は立ち止まる
         m.position.x += wk.dir * wk.speed * dt;
-        if (wk.dir > 0 && m.position.x > wk.xb) { m.position.x = wk.xb; wk.dir = -1; wk.rec.setFlip(-1); }
-        else if (wk.dir < 0 && m.position.x < -wk.xb) { m.position.x = -wk.xb; wk.dir = 1; wk.rec.setFlip(1); }
+        if (wk.dir > 0 && m.position.x > wk.xb) { m.position.x = wk.xb; wk.dir = -1; }
+        else if (wk.dir < 0 && m.position.x < -wk.xb) { m.position.x = -wk.xb; wk.dir = 1; }
       }
       m.position.y = wk.rec.baseY + Math.abs(Math.sin(tsec * 4 + wk.phase)) * 0.08;
+      faceCamera(wk.rec, wk.dir);
     }
   }
   function updateFloaters(dt, tsec) {
@@ -653,14 +668,16 @@
       if (!(f.talk && tsec < f.talk.talkUntil)) {   // 話しかけられている間はその場に留まる
         f.mesh.position.x += f.dir * f.speed * dt;
         if (f.xb) {                                  // 鳥：端で折り返す（消さない）
-          if (f.dir > 0 && f.mesh.position.x > f.xb) { f.mesh.position.x = f.xb; f.dir = -1; if (f.rec) f.rec.setFlip(-1); }
-          else if (f.dir < 0 && f.mesh.position.x < -f.xb) { f.mesh.position.x = -f.xb; f.dir = 1; if (f.rec) f.rec.setFlip(1); }
+          if (f.dir > 0 && f.mesh.position.x > f.xb) { f.mesh.position.x = f.xb; f.dir = -1; }
+          else if (f.dir < 0 && f.mesh.position.x < -f.xb) { f.mesh.position.x = -f.xb; f.dir = 1; }
         } else {                                     // 飛行機：遠くまで飛び去ってループ
           if (f.dir > 0 && f.mesh.position.x > WRAP) f.mesh.position.x = -WRAP;
           if (f.dir < 0 && f.mesh.position.x < -WRAP) f.mesh.position.x = WRAP;
         }
       }
       f.mesh.position.y = f.y + Math.sin(tsec * 0.7 + f.phase) * (f.plane ? 0.6 : 0.4);
+      // 鳥もこちらを向かせる（飛行機は向きを固定したまま＝TRAVEL の文字を鏡にしない）
+      if (f.rec) faceCamera(f.rec, f.dir);
     }
   }
 
