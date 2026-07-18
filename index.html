@@ -32,7 +32,9 @@
     color:#333;
   }
   #gate .gate-panel { max-width:460px; padding:32px; }
-  #gate .logo { font-size:12px; letter-spacing:0.5em; color:var(--sd-red); font-weight:bold; margin-bottom:12px; }
+  /* 字間はここで作る（HTML 側で1文字ずつ区切らない）。nowrap で途中改行も止める。
+     letter-spacing は最後の字の後ろにも入るので、margin-right の負値で中央寄せのズレを消す */
+  #gate .logo { font-size:12px; letter-spacing:0.5em; word-spacing:0.5em; white-space:nowrap; margin-right:-0.5em; color:var(--sd-red); font-weight:bold; margin-bottom:12px; }
   #gate h1 { font-size:30px; margin:0 0 6px; letter-spacing:0.14em; color:#1b1b1b; }
   #gate p { font-size:13px; color:#7a7a7a; margin:0 0 22px; }
   #gate input {
@@ -57,7 +59,7 @@
     color:#333; cursor:pointer; text-align:center;
   }
   #overlay .panel { max-width:640px; padding:32px; }
-  #overlay .logo { font-size:13px; letter-spacing:0.5em; color:var(--sd-red); font-weight:bold; margin-bottom:10px; }
+  #overlay .logo { font-size:13px; letter-spacing:0.5em; word-spacing:0.5em; white-space:nowrap; margin-right:-0.5em; color:var(--sd-red); font-weight:bold; margin-bottom:10px; }
   #overlay h1 { font-size:34px; margin:0 0 4px; letter-spacing:0.04em; color:#1b1b1b; }
   #overlay h1 b { color:var(--sd-red); }
   #overlay h2 { font-size:14px; font-weight:normal; margin:0 0 26px; color:#7a7a7a; }
@@ -196,7 +198,9 @@
 
 <div id="gate">
   <div class="gate-panel">
-    <div class="logo">S E V E N &nbsp; D R E A M S &nbsp; W O R L D</div>
+    <!-- 1文字ずつスペースで区切らないこと。各文字が「単語」扱いになり、
+         どの文字の間でも改行されて "WORL / D" のように割れる。字間は CSS で作る -->
+    <div class="logo">SEVEN DREAMS WORLD</div>
     <h1>PRIVATE</h1>
     <p>このワールドはパスワードが必要です</p>
     <input id="gate-input" type="password" placeholder="パスワード" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -224,7 +228,9 @@
 
 <div id="overlay">
   <div class="panel">
-    <div class="logo">S E V E N &nbsp; D R E A M S &nbsp; W O R L D</div>
+    <!-- 1文字ずつスペースで区切らないこと。各文字が「単語」扱いになり、
+         どの文字の間でも改行されて "WORL / D" のように割れる。字間は CSS で作る -->
+    <div class="logo">SEVEN DREAMS WORLD</div>
     <h1>Seven Dreams <b>World</b></h1>
     <h2>夢と生きる。 — ペーパーワールドを歩く 3D メタバース（プロトタイプ）</h2>
     <div class="start" id="start-btn">クリックしてスタート</div>
