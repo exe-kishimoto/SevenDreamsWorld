@@ -895,27 +895,59 @@
       if (v.paused && v.readyState >= 2) { var p = v.play(); if (p && p.catch) p.catch(function () { }); }
     }
   }
+  // 屋外デジタルサイネージ（自立型）。脚2本ではなく、
+  // 「黒い筐体（上に画面・下は無地パネル）＋床置きの台座」という実物の形にする
   function addMonitor(x, z, rotY, w, h, screenMat, label) {
     var group = new THREE.Group();
-    var poleMat = new THREE.MeshStandardMaterial({ color: 0x333338, roughness: 0.5, metalness: 0.4 });
-    var legGeo = new THREE.CylinderGeometry(0.13, 0.16, 2.4, 10);
-    var l1 = new THREE.Mesh(legGeo, poleMat); l1.position.set(-w * 0.3, 1.2, 0); group.add(l1);
-    var l2 = new THREE.Mesh(legGeo, poleMat); l2.position.set(w * 0.3, 1.2, 0); group.add(l2);
-    var frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, h + 0.5, 0.25), new THREE.MeshStandardMaterial({ color: 0x141418, roughness: 0.5, metalness: 0.4 }));
-    frame.position.set(0, 2.4 + h / 2, 0); addEdges(frame, 0x000000); group.add(frame);
-    var screen = new THREE.Mesh(new THREE.PlaneGeometry(w, h), screenMat);
-    screen.position.set(0, 2.4 + h / 2, 0.2); screen.userData.shadow = "none"; group.add(screen);
-    // ラベル帯（赤）
+    var BEZEL = 0.34;                       // 画面まわりの黒フチ
+    // 画面の下の無地パネル（実機のこの余白が特徴）。大きくすると画面が高くなって
+    // 見上げる形になるので、今までの画面の高さから大きく変えない値にしてある
+    var LOWER = h * 0.55;
+    var BASE_H = 0.34, BASE_D = 1.5;        // 台座の高さ・奥行き
+    var cabW = w + BEZEL * 2;
+    var cabH = h + BEZEL * 2 + LOWER;
+    var cabD = 0.45;
+    var cabY = BASE_H + cabH / 2;           // 筐体は台座の上に載る
+
+    // 筐体（つや消しの黒。紙の街になじむよう輪郭線は入れる）
+    var cab = new THREE.Mesh(
+      new THREE.BoxGeometry(cabW, cabH, cabD),
+      new THREE.MeshStandardMaterial({ color: 0x1b1b1f, roughness: 0.45, metalness: 0.35 })
+    );
+    cab.position.set(0, cabY, 0); addEdges(cab, 0x000000); group.add(cab);
+
+    // 画面（筐体の上寄り）。表裏どちらから見ても映るよう両面に貼る
+    var scrY = cabY + cabH / 2 - BEZEL - h / 2;
+    var scr = new THREE.Mesh(new THREE.PlaneGeometry(w, h), screenMat);
+    scr.position.set(0, scrY, cabD / 2 + 0.01); scr.userData.shadow = "none"; group.add(scr);
+    var scrB = new THREE.Mesh(new THREE.PlaneGeometry(w, h), screenMat);
+    scrB.position.set(0, scrY, -cabD / 2 - 0.01); scrB.rotation.y = Math.PI;
+    scrB.userData.shadow = "none"; group.add(scrB);
+
+    // 台座（床に接する平たい箱。実機のこの土台で自立して見える）
+    var base = new THREE.Mesh(
+      new THREE.BoxGeometry(cabW + 0.5, BASE_H, BASE_D),
+      new THREE.MeshStandardMaterial({ color: 0x121216, roughness: 0.5, metalness: 0.35 })
+    );
+    base.position.set(0, BASE_H / 2, 0); addEdges(base, 0x000000); group.add(base);
+
+    // 下部パネルのブランド銘板（赤）。実機の黒い余白にロゴが入る位置
     var lc = makeCanvas(512, 96), lx = lc.getContext("2d");
     lx.fillStyle = SD_RED_CSS; lx.fillRect(0, 0, 512, 96);
-    lx.fillStyle = "#fff"; lx.font = "bold 44px 'Hiragino Kaku Gothic ProN',sans-serif"; lx.textAlign = "center"; lx.textBaseline = "middle";
+    lx.fillStyle = "#fff"; lx.font = "bold 44px 'Hiragino Kaku Gothic ProN',sans-serif";
+    lx.textAlign = "center"; lx.textBaseline = "middle";
     lx.fillText(label, 256, 50);
-    var band = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.5, 0.7), new THREE.MeshBasicMaterial({ map: texFromCanvas(lc) }));
-    band.position.set(0, 2.4 + h + 0.55, 0.17); band.userData.shadow = "none"; group.add(band);
+    var plateY = cabY - cabH / 2 + LOWER * 0.5;
+    var plate = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.62, w * 0.62 * 96 / 512),
+      new THREE.MeshBasicMaterial({ map: texFromCanvas(lc) }));
+    plate.position.set(0, plateY, cabD / 2 + 0.01); plate.userData.shadow = "none"; group.add(plate);
 
     group.position.set(x, 0, z); group.rotation.y = rotY;
     scene.add(group);
-    addCollider(x, z, Math.abs(Math.cos(rotY)) * (w / 2) + 0.3, Math.abs(Math.sin(rotY)) * (w / 2) + 0.3, 0.2);
+    // 台座は奥行きがあるので、当たり判定も幅・奥行きの両方を見る
+    var hx = Math.abs(Math.cos(rotY)) * (cabW / 2) + Math.abs(Math.sin(rotY)) * (BASE_D / 2);
+    var hz = Math.abs(Math.sin(rotY)) * (cabW / 2) + Math.abs(Math.cos(rotY)) * (BASE_D / 2);
+    addCollider(x, z, hx, hz, 0.2);
   }
   // 南の参道の左右に1面ずつ。画面は来場者（南の入口 ≈ (0,-30)）の方へ向ける
   addMonitor(-13, -13, Math.atan2(0 - (-13), -30 - (-13)), 6, 3.4, makeVideoMat("asset/monitor/video/video-1.mp4"), "動画モニター");

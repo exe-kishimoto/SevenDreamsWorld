@@ -174,7 +174,9 @@ Three.js は r128（クラシックなグローバルビルド、CDN読み込み
 
 ### モニター（`addMonitor` / 動画1・静止画1）
 
-- 脚2本＋黒フレーム＋スクリーン＋赤いラベル帯。`makeVideoMat` は `VideoTexture`、
+- 見た目は**屋外デジタルサイネージ（自立型）**：黒い筐体の上寄りに画面、下は無地パネル、
+  床置きの台座で自立。画面は表裏の2枚に貼ってあるので裏から見ても映る。
+  下部パネルに赤いブランド銘板（`label`）。`makeVideoMat` は `VideoTexture`、
   `makeImageMat` は `TextureLoader`。読込前は `makePlaceholderTex` の「準備中」。
 - 参道の左右に1面ずつ配置（正面を来場者側へ向ける）。位置・向きは `addMonitor(...)` 呼び出しで調整。
 
