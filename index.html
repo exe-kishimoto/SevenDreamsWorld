@@ -236,7 +236,7 @@
     <div class="start" id="start-btn">クリックしてスタート</div>
     <div class="keys" id="keys-desktop">
       <b>W A S D</b>：移動　<b>Shift</b>：走る　<b>Space</b>：ジャンプ　マウス：視点<br>
-      <b>ホイール</b>：ズーム　<b>F</b>：浮遊モード　<b>B</b>：BGM　<b>M</b>：動画音<br>
+      <b>ホイール</b>：ズーム　<b>F</b>：浮遊モード　<b>B</b>：BGM　<b>M</b>：動画音　<b>T</b>：タッチ操作へ<br>
       住人に照準を合わせて<b>クリック</b>：話しかける　<b>ESC</b>：カーソル表示
     </div>
     <div class="keys" id="keys-mobile" style="display:none">
@@ -265,6 +265,8 @@
 <div id="topbtns">
   <button id="btn-bgm" type="button">♪ BGM</button>
   <button id="btn-mov" class="off" type="button">🔇 動画</button>
+  <!-- 操作方式の切替。タッチできる端末でだけ表示する（app.js が制御） -->
+  <button id="btn-input" type="button" style="display:none">🖱 マウス</button>
 </div>
 
 <div id="crosshair"></div>

@@ -1105,8 +1105,15 @@
     topbtns.style.display = on ? "flex" : "none";
   }
 
+  // 「タッチできる端末か」は、モードを勝手に決めるためではなく
+  // **切替を許すかどうか**の判断に使う。タッチできない PC でタッチ操作にすると、
+  // スティックを指で触れず操作不能になるので、その端末では切替ボタンを出さない
+  var hasTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+  var btnInput = document.getElementById("btn-input");
+  var switchingMode = false;
+
   // 操作方式に合わせてスタート画面の文言と操作ガイドを差し替える。
-  // スタート画面をタップ／クリックした時点でもう一度呼んで確定させる
+  // スタート画面をタップ／クリックした時点と、切替ボタンを押した時点で呼ぶ
   var FLY_TEXT_PC = flyBadge.textContent;
   function applyInputMode() {
     document.getElementById("keys-desktop").style.display = isTouch ? "none" : "block";
@@ -1114,8 +1121,39 @@
     document.getElementById("start-btn").textContent = isTouch ? "タップしてスタート" : "クリックしてスタート";
     // PC の文言はキー操作つきで横に長く、縦画面ではタイトルバッジに突き当たる
     flyBadge.textContent = isTouch ? "✈ 浮遊モード ON" : FLY_TEXT_PC;
+    btnInput.textContent = isTouch ? "👆 タッチ" : "🖱 マウス";
+    btnInput.style.display = hasTouch ? "" : "none";
   }
   applyInputMode();
+
+  // プレイ中に操作方式を切り替える。
+  // **マウス操作中はポインターロック中でボタンを押せない**（クリックは3D側に吸われる）ので、
+  // マウス→タッチは `T` キー、タッチ→マウスは画面右上のボタン、が主な導線になる
+  function setInputMode(touch) {
+    if (touch && !hasTouch) return;                 // タッチできない端末はタッチ操作にしない
+    if (touch === isTouch) return;
+    isTouch = touch;
+    applyInputMode();
+    if (overlay.style.display !== "none") return;   // まだ始まっていない＝表示の更新だけ
+    if (isTouch) {
+      // ロック解除でスタート画面に戻さないよう、切替中は unlock の復帰処理を止める
+      if (controls.isLocked) { switchingMode = true; controls.unlock(); }
+      mobileActive = false;
+      startMobile();
+    } else {
+      mobileActive = false;
+      document.getElementById("touch-ui").style.display = "none";
+      document.getElementById("look-layer").style.display = "none";
+      controls.lock();                              // ボタン／キー操作＝ユーザー操作なのでロックできる
+    }
+    showUI(active());
+  }
+  btnInput.addEventListener("click", function (e) { e.stopPropagation(); setInputMode(!isTouch); });
+  // ポインターロックに対応していない端末（多くのスマホ）でマウス操作にすると
+  // 操作不能になるので、失敗したらタッチ操作へ戻す
+  document.addEventListener("pointerlockerror", function () {
+    if (!isTouch && hasTouch) { isTouch = true; applyInputMode(); mobileActive = false; startMobile(); }
+  });
 
   function startMobile() {
     if (mobileActive) return;
@@ -1142,7 +1180,11 @@
     else { controls.lock(); startAudio(); }
   });
   controls.addEventListener("lock", function () { overlay.style.display = "none"; showUI(true); startAudio(); updateFlyBadge(); });
-  controls.addEventListener("unlock", function () { overlay.style.display = "flex"; showUI(false); flyBadge.style.display = "none"; });
+  controls.addEventListener("unlock", function () {
+    // 操作方式の切替によるロック解除では、スタート画面に戻さない
+    if (switchingMode) { switchingMode = false; return; }
+    overlay.style.display = "flex"; showUI(false); flyBadge.style.display = "none";
+  });
 
   var keys = {};
   window.addEventListener("keydown", function (e) {
@@ -1151,6 +1193,8 @@
     if (e.code === "KeyF" && !e.repeat) { flyMode = !flyMode; velY = 0; updateFlyBadge(); setFlyButtons(); }
     if (e.code === "KeyB" && !e.repeat) toggleBGM();
     if (e.code === "KeyM" && !e.repeat) toggleMovie();
+    // マウス操作中はポインターロック中で右上のボタンを押せないので、キーでも切り替えられるようにする
+    if (e.code === "KeyT" && !e.repeat) setInputMode(!isTouch);
   });
   window.addEventListener("keyup", function (e) { keys[e.code] = false; });
   window.addEventListener("wheel", function (e) {
