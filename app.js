@@ -1080,7 +1080,15 @@
   var flyBadge = document.getElementById("fly-badge");
   var topbtns = document.getElementById("topbtns");
 
-  var isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+  // **「タッチできる端末か」で判定しないこと**。`navigator.maxTouchPoints > 0` で見ると、
+  // タッチパネル付きの PC が問答無用でスマホ UI になり、マウスの照準クリックも
+  // ポインターロックも使えなくなる（タッチ PC にはマウス／トラックパッドもある）。
+  // 見るべきは「実際にどの入力で操作しているか」。
+  //   1. 起動時は主ポインタの種類（pointer: coarse＝指）で仮決めする
+  //   2. スタート画面をタップ／クリックした入力で確定する（applyInputMode）
+  // タッチ PC でも、指で始めればタッチ操作、マウスで始めればマウス操作になる。
+  var isTouch = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+    (!window.matchMedia && (("ontouchstart" in window) || navigator.maxTouchPoints > 0));
   var mobileActive = false;
   var joy = { active: false, x: 0, y: 0 };
   var lookEuler = new THREE.Euler(0, 0, 0, "YXZ");
@@ -1097,13 +1105,17 @@
     topbtns.style.display = on ? "flex" : "none";
   }
 
-  if (isTouch) {
-    document.getElementById("keys-desktop").style.display = "none";
-    document.getElementById("keys-mobile").style.display = "block";
-    document.getElementById("start-btn").textContent = "タップしてスタート";
-    // 既定の文言はキー操作つきで横に長く、縦画面でタイトルバッジに突き当たる
-    flyBadge.textContent = "✈ 浮遊モード ON";
+  // 操作方式に合わせてスタート画面の文言と操作ガイドを差し替える。
+  // スタート画面をタップ／クリックした時点でもう一度呼んで確定させる
+  var FLY_TEXT_PC = flyBadge.textContent;
+  function applyInputMode() {
+    document.getElementById("keys-desktop").style.display = isTouch ? "none" : "block";
+    document.getElementById("keys-mobile").style.display = isTouch ? "block" : "none";
+    document.getElementById("start-btn").textContent = isTouch ? "タップしてスタート" : "クリックしてスタート";
+    // PC の文言はキー操作つきで横に長く、縦画面ではタイトルバッジに突き当たる
+    flyBadge.textContent = isTouch ? "✈ 浮遊モード ON" : FLY_TEXT_PC;
   }
+  applyInputMode();
 
   function startMobile() {
     if (mobileActive) return;
@@ -1117,7 +1129,15 @@
     updateFlyBadge();
   }
 
+  // スタート画面を「何で」操作したかで確定する（指＝タッチ操作 / マウス＝マウス操作）。
+  // pen はタッチ側に寄せる（ポインターロックはペンと相性が悪い）。
+  // pointerdown が来ない古いブラウザでは、起動時の仮決め（主ポインタ）のまま進む
+  var startPointer = "";
+  overlay.addEventListener("pointerdown", function (e) { startPointer = e.pointerType || ""; });
   overlay.addEventListener("click", function () {
+    if (startPointer === "touch" || startPointer === "pen") isTouch = true;
+    else if (startPointer === "mouse") isTouch = false;
+    applyInputMode();
     if (isTouch) startMobile();
     else { controls.lock(); startAudio(); }
   });
